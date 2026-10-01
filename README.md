@@ -1,6 +1,11 @@
 # Molecule Styler Plugin
 
 [![CI](https://github.com/HiroYokoyama/moleditpy_molecule_styler/actions/workflows/test.yml/badge.svg)](https://github.com/HiroYokoyama/moleditpy_molecule_styler/actions/workflows/test.yml)
+[![GitHub tag](https://img.shields.io/github/v/tag/HiroYokoyama/moleditpy_molecule_styler?label=version)](https://github.com/HiroYokoyama/moleditpy_molecule_styler/tags)
+[![GitHub Downloads](https://img.shields.io/github/downloads/HiroYokoyama/moleditpy_molecule_styler/total)](https://github.com/HiroYokoyama/moleditpy_molecule_styler/releases)
+[![License: GPL-3.0](https://img.shields.io/github/license/HiroYokoyama/moleditpy_molecule_styler)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![MoleditPy](https://img.shields.io/badge/MoleditPy-4.x-informational)
 
 ## Overview
 Molecule Styler adds a dock panel on the right of the MoleditPy window that lists
