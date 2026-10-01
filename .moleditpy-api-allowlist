@@ -1,4 +1,6 @@
 {
-  "mw": {},
+  "mw": {
+    "resizeDocks": "QMainWindow method (Qt), not defined by MoleditPy"
+  },
   "manager": {}
 }

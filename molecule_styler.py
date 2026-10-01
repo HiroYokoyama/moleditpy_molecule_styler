@@ -57,6 +57,7 @@ SAVE_KEY = "styles"
 DEFAULT_STYLE = "ball_and_stick"
 MIXED_LABEL = "(mixed)"
 POLL_MS = 600
+WIDTH_SCALE = 1.2  # panel is 20% wider than Qt's default size hint
 
 STYLES = ["cpk", "ball_and_stick", "stick", "wireframe", "hidden"]
 STYLE_LABELS = {
@@ -526,7 +527,7 @@ class StylerPanel:
         self.tree = QTreeWidget()
         self.tree.setColumnCount(2)
         self.tree.setHeaderLabels(["Molecule / Atom", "Style"])
-        self.tree.setColumnWidth(0, 170)
+        self.tree.setColumnWidth(0, int(170 * WIDTH_SCALE))
         self.tree.itemExpanded.connect(self._on_expanded)
         layout.addWidget(self.tree, 1)
 
@@ -541,6 +542,8 @@ class StylerPanel:
 
         self.dock.setWidget(body)
         self.mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
+        width = int(self.dock.sizeHint().width() * WIDTH_SCALE)
+        self.mw.resizeDocks([self.dock], [width], Qt.Orientation.Horizontal)
 
         self.timer = QTimer(self.dock)
         self.timer.timeout.connect(self._poll)
