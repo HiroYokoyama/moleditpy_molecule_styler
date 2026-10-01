@@ -313,11 +313,14 @@ def test_rebuild_if_changed_only_when_signature_differs():
     ms.StylerPanel._rebuild_if_changed(p, mol)
     assert p.fragments == [[0, 1], [2]] and p.symbols == ["C", "O", "H"]
     assert p._populate.call_count == 1
-    assert 5 not in st.styles  # pruned: atom 5 no longer exists
+    assert st.styles == {5: "cpk"}  # kept: a transient smaller mol must not erase styles
     ms.StylerPanel._rebuild_if_changed(p, Mol(["C", "O", "H"], [(0, 1)]))
     assert p._populate.call_count == 1  # identical structure: no rebuild
     ms.StylerPanel._rebuild_if_changed(p, None)
     assert p._populate.call_count == 2 and p.fragments == []
+    assert st.styles == {5: "cpk"}
+    ms.StylerPanel._rebuild_if_changed(p, Mol(["C"] * 6, []))  # molecule comes back
+    assert st.style_of(5) == "cpk"
 
 
 # --- plugin entry points -----------------------------------------------------

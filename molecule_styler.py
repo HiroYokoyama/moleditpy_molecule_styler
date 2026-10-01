@@ -579,7 +579,10 @@ class StylerPanel:
             return
         self._signature = sig
         self.fragments, self.symbols = frags, symbols
-        self.state.prune(len(symbols))
+        # Styles are deliberately NOT pruned here: a redraw, project load or
+        # re-embed can briefly present a smaller (or empty) molecule, and
+        # dropping entries then would erase the user's styling for good.
+        # build_scene only looks up atoms that exist, so stale indices are inert.
         self._populate()
 
     # -- tree --------------------------------------------------------------
