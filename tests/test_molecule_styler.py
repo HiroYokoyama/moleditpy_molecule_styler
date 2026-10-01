@@ -405,3 +405,51 @@ def test_toggle_shows_then_hides_and_switches_style_on_show():
     ms.StylerPanel.toggle(p)
     dock.setVisible.assert_called_with(False)
     p.activate_style.assert_called_once()
+
+
+class FakeAction:
+    def __init__(self, text):
+        self._text, self.checked = text, False
+
+    def text(self):
+        return self._text
+
+    def setChecked(self, flag):
+        self.checked = flag
+
+
+def _mw_with_menu(texts):
+    actions = [FakeAction(t) for t in texts]
+    menu = SimpleNamespace(actions=lambda: actions)
+    button = SimpleNamespace(menu=lambda: menu)
+    return SimpleNamespace(init_manager=SimpleNamespace(style_button=button)), actions
+
+
+def test_sync_style_menu_ticks_plugin_entry():
+    mw, actions = _mw_with_menu(["Ball & Stick", "Stick", ms.STYLE_NAME])
+    ms._sync_style_menu(mw)
+    assert [a.checked for a in actions] == [False, False, True]
+
+
+def test_sync_style_menu_tolerates_missing_or_empty_menu():
+    ms._sync_style_menu(SimpleNamespace())  # no init_manager
+    ms._sync_style_menu(SimpleNamespace(init_manager=SimpleNamespace()))  # no button
+    mw, actions = _mw_with_menu(["Ball & Stick"])  # entry absent
+    ms._sync_style_menu(mw)
+    assert actions[0].checked is False
+    mw.init_manager.style_button = SimpleNamespace(menu=lambda: None)
+    ms._sync_style_menu(mw)
+
+
+def test_activate_style_and_redraw_tick_the_menu():
+    mw, actions = _mw_with_menu(["Ball & Stick", ms.STYLE_NAME])
+    v3d = MagicMock()
+    v3d.current_3d_style = "ball_and_stick"
+    mw.view_3d_manager = v3d
+    ms.StylerPanel.activate_style(SimpleNamespace(mw=mw))
+    assert actions[1].checked
+    actions[1].checked = False
+    ctx = MagicMock()
+    p = SimpleNamespace(mw=mw, context=ctx, _current_mol=lambda: object())
+    ms.StylerPanel.redraw(p)
+    assert actions[1].checked

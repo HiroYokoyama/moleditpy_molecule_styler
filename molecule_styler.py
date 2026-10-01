@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.1.2"
+PLUGIN_VERSION = "0.1.3"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -493,6 +493,24 @@ def _render_body(mw, v3d, mol):
 # ---------------------------------------------------------------------------
 
 
+def _sync_style_menu(mw):
+    """Tick this style in the toolbar's "3D Style" menu.
+
+    The host's menu actions form an exclusive group but only tick themselves
+    when clicked; switching style from code leaves the old entry (usually
+    Ball & Stick) ticked, which looks as if the style never changed.
+    """
+    init = getattr(mw, "init_manager", None)
+    button = getattr(init, "style_button", None)
+    menu = button.menu() if button is not None else None
+    if menu is None:
+        return
+    for action in menu.actions():
+        if action.text() == STYLE_NAME:
+            action.setChecked(True)
+            return
+
+
 class StylerPanel:
     """Right-hand dock listing molecules and atoms with a style combo each."""
 
@@ -671,6 +689,7 @@ class StylerPanel:
             v3d.draw_molecule_3d(mol)
         else:
             v3d.set_3d_style(STYLE_NAME)
+        _sync_style_menu(self.mw)
         self.context.mark_project_modified()
 
     def activate_style(self):
@@ -678,6 +697,7 @@ class StylerPanel:
         v3d = getattr(self.mw, "view_3d_manager", None)
         if v3d is not None and getattr(v3d, "current_3d_style", None) != STYLE_NAME:
             v3d.set_3d_style(STYLE_NAME)
+        _sync_style_menu(self.mw)
 
     def toggle(self):
         """Show or hide the dock; showing it switches to the plugin's style."""
