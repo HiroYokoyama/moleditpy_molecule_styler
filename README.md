@@ -20,7 +20,9 @@ wireframe and a metal centre as CPK in the same view.
 * **Apply to all / Reset:** set every atom at once, or return to the default.
 * **Uses your settings:** radii, resolutions, bond colour, lighting and the
   colour overrides set by other plugins are honoured.
-* **Saved with the project** and cleared on File > New.
+* **Saved with the project:** styles are stored in the project file and restored on
+  load, and the 3D view switches to Molecule Styler automatically when a project
+  with styles (or with this style active) is opened. File > New clears them.
 
 ## Usage
 1. Load molecules in the 3D viewer.

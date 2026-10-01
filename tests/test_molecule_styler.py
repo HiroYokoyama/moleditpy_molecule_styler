@@ -335,18 +335,78 @@ def test_initialize_registers_everything():
     ctx.register_document_reset_handler.assert_called_once()
 
 
-def test_save_load_reset_roundtrip():
+def _ctx(style):
+    mw, actions = _mw_with_menu(["Ball & Stick", ms.STYLE_NAME])
+    mw.view_3d_manager = SimpleNamespace(current_3d_style=style)
+    ctx = MagicMock()
+    ctx.get_main_window.return_value = mw
+    return ctx, mw, actions
+
+
+def test_save_load_reset_roundtrip(monkeypatch):
+    ctx, mw, actions = _ctx("ball_and_stick")
+    monkeypatch.setattr(ms, "_context", ctx)
     ms._state.clear()
-    assert ms._save() == {}
+    assert ms._save() == {}  # nothing styled and style not active
     ms._state.set_atoms([0, 2], "stick")
     saved = ms._save()
-    assert saved == {ms.SAVE_KEY: {"0": "stick", "2": "stick"}}
+    assert saved == {ms.SAVE_KEY: {"0": "stick", "2": "stick"}, ms.ACTIVE_KEY: False}
     ms._reset_document()
     assert ms._state.styles == {}
     ms._load(saved)
     assert ms._state.styles == {0: "stick", 2: "stick"}
     ms._load(None)
     assert ms._state.styles == {}
+
+
+def test_save_records_active_style_even_without_per_atom_styles(monkeypatch):
+    ctx, _, _ = _ctx(ms.STYLE_NAME)
+    monkeypatch.setattr(ms, "_context", ctx)
+    ms._state.clear()
+    assert ms._save() == {ms.SAVE_KEY: {}, ms.ACTIVE_KEY: True}
+
+
+def test_load_with_styles_switches_style_and_ticks_menu(monkeypatch):
+    ctx, mw, actions = _ctx("cpk")
+    monkeypatch.setattr(ms, "_context", ctx)
+    ms._load({ms.SAVE_KEY: {"1": "stick"}, ms.ACTIVE_KEY: False})
+    assert mw.view_3d_manager.current_3d_style == ms.STYLE_NAME
+    assert actions[1].checked
+    ms._state.clear()
+
+
+def test_load_with_active_flag_only_switches_style(monkeypatch):
+    ctx, mw, _ = _ctx("cpk")
+    monkeypatch.setattr(ms, "_context", ctx)
+    ms._load({ms.SAVE_KEY: {}, ms.ACTIVE_KEY: True})
+    assert mw.view_3d_manager.current_3d_style == ms.STYLE_NAME
+
+
+def test_load_of_unrelated_data_leaves_style_alone(monkeypatch):
+    ctx, mw, _ = _ctx("cpk")
+    monkeypatch.setattr(ms, "_context", ctx)
+    ms._load({})
+    ms._load(None)
+    assert mw.view_3d_manager.current_3d_style == "cpk"
+
+
+def test_load_does_not_redraw_previous_molecule(monkeypatch):
+    ctx, mw, _ = _ctx("cpk")
+    mw.view_3d_manager.set_3d_style = MagicMock()
+    mw.view_3d_manager.draw_molecule_3d = MagicMock()
+    monkeypatch.setattr(ms, "_context", ctx)
+    ms._load({ms.SAVE_KEY: {"0": "stick"}})
+    mw.view_3d_manager.set_3d_style.assert_not_called()
+    mw.view_3d_manager.draw_molecule_3d.assert_not_called()
+    ms._state.clear()
+
+
+def test_select_style_without_context_or_view_is_safe():
+    ms._select_style(None)
+    ctx = MagicMock()
+    ctx.get_main_window.return_value = SimpleNamespace()
+    ms._select_style(ctx)
+    assert ms._is_active(None) is False
 
 
 def test_toggle_panel_creates_once_then_toggles(monkeypatch):

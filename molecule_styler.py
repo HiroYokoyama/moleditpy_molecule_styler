@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.1.3"
+PLUGIN_VERSION = "0.2.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -54,6 +54,7 @@ PLUGIN_SUPPORTED_OS = ["Windows", "macOS", "Linux", "WSL"]
 
 STYLE_NAME = "Molecule Styler"
 SAVE_KEY = "styles"
+ACTIVE_KEY = "active"
 DEFAULT_STYLE = "ball_and_stick"
 MIXED_LABEL = "(mixed)"
 POLL_MS = 600
@@ -333,6 +334,7 @@ def _make_cfg(settings, display_radii, pt):
 
 _state = StyleState()
 _panel = None
+_context = None
 
 
 def render_styled(mw, mol):
@@ -722,12 +724,40 @@ def _toggle_panel(context):
     _panel.toggle()
 
 
+def _is_active(context):
+    """True while the 3D view is using this plugin's style."""
+    mw = context.get_main_window() if context is not None else None
+    v3d = getattr(mw, "view_3d_manager", None)
+    return getattr(v3d, "current_3d_style", None) == STYLE_NAME
+
+
+def _select_style(context):
+    """Make this plugin's style the current one without drawing.
+
+    Project loading restores the molecule (and draws it) right after the load
+    handlers run, so only the style name has to be in place beforehand; going
+    through set_3d_style would first redraw the previous molecule.
+    """
+    mw = context.get_main_window() if context is not None else None
+    v3d = getattr(mw, "view_3d_manager", None)
+    if v3d is None:
+        return
+    v3d.current_3d_style = STYLE_NAME
+    _sync_style_menu(mw)
+
+
 def _save():
-    return {SAVE_KEY: _state.to_dict()} if _state.styles else {}
+    active = _is_active(_context)
+    if not _state.styles and not active:
+        return {}
+    return {SAVE_KEY: _state.to_dict(), ACTIVE_KEY: active}
 
 
 def _load(data):
-    _state.load_dict((data or {}).get(SAVE_KEY))
+    data = data if isinstance(data, dict) else {}
+    _state.load_dict(data.get(SAVE_KEY))
+    if data.get(ACTIVE_KEY) or _state.styles:
+        _select_style(_context)
     if _panel is not None:
         _panel.refresh()
 
@@ -740,6 +770,8 @@ def _reset_document():
 
 def initialize(context):
     """Register the style, the View-menu toggle and the persistence handlers."""
+    global _context  # pylint: disable=global-statement
+    _context = context
     context.register_3d_style(STYLE_NAME, render_styled)
     context.add_menu_action(
         "View/Molecule Styler Panel", lambda: _toggle_panel(context)
