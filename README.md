@@ -14,7 +14,10 @@ it — gets its own display style, so you can show a ligand as sticks, a solvent
 wireframe and a metal centre as CPK in the same view.
 
 ## Key Features
-* **Per-molecule styles:** CPK, Ball & Stick, Stick, Wireframe or Hidden.
+* **Per-molecule styles:** CPK, Custom CPK, Ball & Stick, Stick, Wireframe or Hidden.
+* **Custom CPK:** sphere size as a percentage of the van der Waals radius (10-300 %,
+  100 % = CPK), set per molecule or per atom in the *Size %* column. Where shrunken
+  spheres leave a gap, the bond is drawn as a thin stick.
 * **Per-atom styles:** expand a molecule to style single atoms; the molecule row
   shows `(mixed)` when its atoms differ.
 * **Opens itself:** selecting Molecule Styler in the 3D Style menu (or opening a

@@ -130,3 +130,24 @@ def test_render_styled_uses_unique_atom_ids_and_draws_highlight():
         st.clear()
         st.bind([], "index")
         plotter.close()
+
+
+def test_render_custom_cpk_with_percent_and_highlight():
+    plotter = pv.Plotter(off_screen=True)
+    mw, v3d, _ = make_mw(plotter)
+    mol, frags = two_molecules()
+    st = ms._state
+    st.clear()
+    st.bind([i for i in range(mol.GetNumAtoms())], "index")
+    st.set_atoms(frags[0], "custom_cpk")
+    st.set_percent(frags[0], 40)
+    saved_panel = ms._panel
+    ms._panel = SimpleNamespace(selected=[frags[0][0]], notify_molecule=lambda m: None)
+    try:
+        ms.render_styled(mw, mol)
+        assert v3d.atom_actor is not None
+        assert ms.HIGHLIGHT_NAME in plotter.actors
+    finally:
+        ms._panel = saved_panel
+        st.clear()
+        plotter.close()

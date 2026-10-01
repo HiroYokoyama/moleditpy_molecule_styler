@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSpinBox,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.4.0"
+PLUGIN_VERSION = "0.5.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -61,9 +62,15 @@ MIXED_LABEL = "(mixed)"
 POLL_MS = 600
 WIDTH_SCALE = 1.2  # panel is 20% wider than Qt's default size hint
 
-STYLES = ["cpk", "ball_and_stick", "stick", "wireframe", "hidden"]
+STYLES = ["cpk", "custom_cpk", "ball_and_stick", "stick", "wireframe", "hidden"]
+CPK_LIKE = ("cpk", "custom_cpk")  # van der Waals spheres
+PCT_DEFAULT = 100  # custom CPK radius, percent of the van der Waals radius
+PCT_MIN = 10
+PCT_MAX = 300
+PCT_STEP = 5
 STYLE_LABELS = {
     "cpk": "CPK",
+    "custom_cpk": "Custom CPK",
     "ball_and_stick": "Ball & Stick",
     "stick": "Stick",
     "wireframe": "Wireframe",
@@ -163,6 +170,8 @@ class StyleState:
         self.by_index = {}
         self.mode = "index"
         self.keys = []
+        self.pct_by_id = {}  # custom CPK size, percent
+        self.pct_by_index = {}
         self._fingerprint = None  # (mode, {(key, symbol)}) of the bound molecule
 
     def bind(self, keys, mode, symbols=None):
@@ -200,6 +209,23 @@ class StyleState:
         """Style of one atom."""
         return self._active().get(self.key(idx), DEFAULT_STYLE)
 
+    def _pct_active(self):
+        return self.pct_by_id if self.mode == "id" else self.pct_by_index
+
+    def percent_of(self, idx):
+        """Custom CPK size of one atom in percent of its van der Waals radius."""
+        return self._pct_active().get(self.key(idx), PCT_DEFAULT)
+
+    def set_percent(self, indices, pct):
+        """Set the custom CPK size (clamped to PCT_MIN..PCT_MAX) of `indices`."""
+        pct = max(PCT_MIN, min(PCT_MAX, int(pct)))
+        store = self._pct_active()
+        for i in indices:
+            if pct == PCT_DEFAULT:
+                store.pop(self.key(i), None)
+            else:
+                store[self.key(i)] = pct
+
     def set_atoms(self, indices, style):
         """Assign `style` to every atom in `indices`."""
         if style not in STYLES:
@@ -230,6 +256,8 @@ class StyleState:
         """Back to the default style everywhere."""
         self.by_id.clear()
         self.by_index.clear()
+        self.pct_by_id.clear()
+        self.pct_by_index.clear()
 
     def to_dict(self):
         """JSON-serialisable form for the project file."""
@@ -238,6 +266,17 @@ class StyleState:
             out["atom_ids"] = {str(k): v for k, v in sorted(self.by_id.items())}
         if self.by_index:
             out["indices"] = {str(k): v for k, v in sorted(self.by_index.items())}
+        for name, pcts, styles in (
+            ("atom_percents", self.pct_by_id, self.by_id),
+            ("index_percents", self.pct_by_index, self.by_index),
+        ):
+            used = {
+                str(k): v
+                for k, v in sorted(pcts.items())
+                if styles.get(k) == "custom_cpk"
+            }
+            if used:
+                out[name] = used
         return out
 
     @staticmethod
@@ -253,6 +292,19 @@ class StyleState:
                     result[idx] = style
         return result
 
+    @staticmethod
+    def _parse_percents(raw):
+        result = {}
+        if isinstance(raw, dict):
+            for key, value in raw.items():
+                try:
+                    idx, pct = int(key), int(value)
+                except (TypeError, ValueError):
+                    continue
+                if idx >= 0 and pct != PCT_DEFAULT:
+                    result[idx] = max(PCT_MIN, min(PCT_MAX, pct))
+        return result
+
     def load_dict(self, data):
         """Restore from `to_dict` output; anything else is ignored."""
         self.clear()
@@ -261,6 +313,8 @@ class StyleState:
             return
         self.by_id = self._parse(data.get("atom_ids"))
         self.by_index = self._parse(data.get("indices"))
+        self.pct_by_id = self._parse_percents(data.get("atom_percents"))
+        self.pct_by_index = self._parse_percents(data.get("index_percents"))
 
 
 def _unit(v):
@@ -282,7 +336,9 @@ def _perpendicular(direction):
     return _unit(_cross(d, arb))
 
 
-def build_scene(symbols, positions, bonds, styles, colors, cfg, bond_colors=None):
+def build_scene(
+    symbols, positions, bonds, styles, colors, cfg, bond_colors=None, percents=None
+):
     """Turn per-atom styles into spheres and bond segments.
 
     Args:
@@ -294,16 +350,21 @@ def build_scene(symbols, positions, bonds, styles, colors, cfg, bond_colors=None
         cfg: dict with scale/radius/resolution settings and the callables
             ``vdw(symbol)`` and ``display_radius(symbol)``.
         bond_colors: optional bond_idx -> (r, g, b) override.
+        percents: optional callable atom_idx -> custom CPK size in percent.
     Returns:
         (spheres, segments) -- spheres are (atom_idx, pos, radius, resolution),
         segments are (p0, p1, radius, rgb0, rgb1).
     """
     bond_colors = bond_colors or {}
+    percents = percents or (lambda i: PCT_DEFAULT)
     spheres = []
+    sphere_radius = {}
     for i, sym in enumerate(symbols):
         st = styles(i)
-        if st == "cpk":
+        if st in CPK_LIKE:
             r = cfg["vdw"](sym) * cfg["cpk_atom_scale"]
+            if st == "custom_cpk":
+                r *= percents(i) / 100.0
             res = cfg["cpk_resolution"]
         elif st == "ball_and_stick":
             r = cfg["display_radius"](sym) * cfg["ball_stick_atom_scale"]
@@ -314,19 +375,28 @@ def build_scene(symbols, positions, bonds, styles, colors, cfg, bond_colors=None
         else:  # wireframe / hidden: no sphere
             continue
         spheres.append((i, positions[i], r, res))
+        sphere_radius[i] = r
 
     segments = []
     for begin, end, order, bidx in bonds:
         sa, sb = styles(begin), styles(end)
         if "hidden" in (sa, sb) or (sa == "cpk" and sb == "cpk"):
             continue
-        radii = [
-            cfg[_BOND_RADIUS_KEY[s][0]]
-            for s in (sa, sb)
-            if s in _BOND_RADIUS_KEY
-        ]
-        radius = min(radii)
         p0, p1 = positions[begin], positions[end]
+        if sa in CPK_LIKE and sb in CPK_LIKE:
+            # Two van der Waals spheres hide the bond, unless a shrunken custom
+            # CPK pair leaves a gap: then bridge it with a thin stick.
+            length = math.dist(p0, p1)
+            if sphere_radius[begin] + sphere_radius[end] >= length:
+                continue
+            radii = [cfg["ball_stick_bond_radius"]]
+        else:
+            radii = [
+                cfg[_BOND_RADIUS_KEY[s][0]]
+                for s in (sa, sb)
+                if s in _BOND_RADIUS_KEY
+            ]
+        radius = min(radii)
         if bidx in bond_colors:
             c0 = c1 = bond_colors[bidx]
         elif sa == "ball_and_stick" and sb == "ball_and_stick":
@@ -499,7 +569,8 @@ def _render_body(mw, v3d, mol):
     _state.bind(keys, mode, symbols)
     cfg = _make_cfg(settings, display_radii, pt)
     spheres, segments = build_scene(
-        symbols, positions, bonds, _state.style_of, colors, cfg, bond_colors
+        symbols, positions, bonds, _state.style_of, colors, cfg, bond_colors,
+        _state.percent_of,
     )
 
     v3d.atom_positions_3d = np.array(positions)
@@ -606,8 +677,10 @@ def draw_highlight(v3d, mol, indices):
     radii = []
     for i in indices:
         sym = mol.GetAtomWithIdx(i).GetSymbol()
-        if _state.style_of(i) == "cpk":
-            radii.append(cfg["vdw"](sym) * 1.15)
+        style = _state.style_of(i)
+        if style in CPK_LIKE:
+            pct = _state.percent_of(i) / 100.0 if style == "custom_cpk" else 1.0
+            radii.append(cfg["vdw"](sym) * cfg["cpk_atom_scale"] * pct * 1.15)
         else:
             radii.append(cfg["display_radius"](sym) * 1.3)
     src = pv.PolyData(np.array([positions[i] for i in indices]))
@@ -651,6 +724,7 @@ class StylerPanel:
         self.symbols = []
         self._signature = None
         self._combos = []  # (combo, indices)
+        self._spins = []  # (spin, indices): custom CPK size %
         self.selected = []  # RDKit indices highlighted in 3D
 
         self.dock = QDockWidget("Molecule Styler", self.mw)
@@ -673,8 +747,8 @@ class StylerPanel:
         layout.addLayout(row)
 
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(2)
-        self.tree.setHeaderLabels(["Molecule / Atom", "Style"])
+        self.tree.setColumnCount(3)
+        self.tree.setHeaderLabels(["Molecule / Atom", "Style", "Size %"])
         self.tree.setColumnWidth(0, int(170 * WIDTH_SCALE))
         self.tree.itemExpanded.connect(self._on_expanded)
         self.tree.itemSelectionChanged.connect(self._on_selection)
@@ -756,6 +830,32 @@ class StylerPanel:
         self._set_combo(combo, indices)
         return combo
 
+    def _make_spin(self, indices):
+        spin = QSpinBox()
+        spin.setRange(PCT_MIN, PCT_MAX)
+        spin.setSingleStep(PCT_STEP)
+        spin.setSuffix(" %")
+        spin.setKeyboardTracking(False)  # one redraw per edit, not per keystroke
+        spin.setToolTip("Custom CPK radius as a percentage of the van der Waals radius")
+        spin.valueChanged.connect(
+            lambda value, idx=list(indices): self._on_percent(idx, value)
+        )
+        self._spins.append((spin, list(indices)))
+        self._set_spin(spin, indices)
+        return spin
+
+    def _set_spin(self, spin, indices):
+        """Show the shared size; only editable while the atoms use Custom CPK."""
+        spin.blockSignals(True)
+        spin.setValue(self.state.percent_of(indices[0]) if indices else PCT_DEFAULT)
+        spin.blockSignals(False)
+        spin.setEnabled(self.state.common_style(indices) == "custom_cpk")
+
+    def _on_percent(self, indices, value):
+        self.state.set_percent(indices, value)
+        self._sync_combos()  # molecule and atom rows show the same sizes
+        self.redraw()
+
     def _set_combo(self, combo, indices):
         common = self.state.common_style(indices)
         pos = STYLES.index(common) if common else len(STYLES)
@@ -766,6 +866,7 @@ class StylerPanel:
     def _populate(self):
         self.tree.clear()
         self._combos = []
+        self._spins = []
         self.info.setText(
             f"{len(self.fragments)} molecule(s), {len(self.symbols)} atoms"
             if self.symbols
@@ -773,11 +874,12 @@ class StylerPanel:
         )
         for k, frag in enumerate(self.fragments, 1):
             label = f"Molecule {k}  {formula_of([self.symbols[i] for i in frag])}"
-            item = QTreeWidgetItem([label, ""])
+            item = QTreeWidgetItem([label, "", ""])
             item.setData(0, Qt.ItemDataRole.UserRole, list(frag))
             item.addChild(QTreeWidgetItem(["...", ""]))  # lazy placeholder
             self.tree.addTopLevelItem(item)
             self.tree.setItemWidget(item, 1, self._make_combo(frag))
+            self.tree.setItemWidget(item, 2, self._make_spin(frag))
 
     def _on_expanded(self, item):
         frag = item.data(0, Qt.ItemDataRole.UserRole)
@@ -785,10 +887,11 @@ class StylerPanel:
             return
         item.takeChild(0)
         for i in frag:
-            child = QTreeWidgetItem([f"{self.symbols[i]}  (id {self.state.key(i)})", ""])
+            child = QTreeWidgetItem([f"{self.symbols[i]}  (id {self.state.key(i)})", "", ""])
             child.setData(0, Qt.ItemDataRole.UserRole, [i])
             item.addChild(child)
             self.tree.setItemWidget(child, 1, self._make_combo([i]))
+            self.tree.setItemWidget(child, 2, self._make_spin([i]))
 
     # -- actions -----------------------------------------------------------
 
@@ -815,6 +918,8 @@ class StylerPanel:
     def _sync_combos(self):
         for combo, indices in self._combos:
             self._set_combo(combo, indices)
+        for spin, indices in getattr(self, "_spins", []):
+            self._set_spin(spin, indices)
 
     def redraw(self):
         """Redraw the scene, switching to this plugin's style if needed."""

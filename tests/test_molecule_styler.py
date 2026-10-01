@@ -18,7 +18,7 @@ def _install_stubs():
     qt_core.QTimer = MagicMock()
     qt_widgets = types.ModuleType("PyQt6.QtWidgets")
     for name in [
-        "QComboBox", "QDockWidget", "QHBoxLayout", "QLabel", "QPushButton",
+        "QComboBox", "QDockWidget", "QHBoxLayout", "QLabel", "QPushButton", "QSpinBox",
         "QTreeWidget", "QTreeWidgetItem", "QVBoxLayout", "QWidget",
     ]:
         setattr(qt_widgets, name, MagicMock())
@@ -865,3 +865,161 @@ def test_initialize_starts_the_style_watcher(monkeypatch):
     ms.initialize(MagicMock())  # plugin reload: the old watcher is stopped
     assert timers[0].stopped and len(timers) == 2
     monkeypatch.setattr(ms, "_watch_timer", None)
+
+
+# --- Custom CPK: per-atom size in percent -----------------------------------------
+
+def test_custom_cpk_is_a_selectable_style():
+    assert "custom_cpk" in ms.STYLES and ms.STYLE_LABELS["custom_cpk"] == "Custom CPK"
+
+
+def test_state_percent_default_clamp_and_reset():
+    st = ms.StyleState()
+    assert st.percent_of(0) == 100
+    st.set_percent([0, 1], 50)
+    assert st.percent_of(0) == st.percent_of(1) == 50
+    st.set_percent([0], 5)  # below the minimum
+    assert st.percent_of(0) == ms.PCT_MIN
+    st.set_percent([0], 1000)
+    assert st.percent_of(0) == ms.PCT_MAX
+    st.set_percent([0], 100)  # back to the default drops the entry
+    assert 0 not in st.pct_by_index
+    st.clear()
+    assert st.percent_of(1) == 100
+
+
+def test_state_percent_follows_unique_ids():
+    st = ms.StyleState()
+    st.bind([10, 11], "id", ["C", "O"])
+    st.set_atoms([1], "custom_cpk")
+    st.set_percent([1], 60)
+    assert st.pct_by_id == {11: 60}
+    st.bind([11, 10], "id", ["O", "C"])
+    assert st.percent_of(0) == 60 and st.percent_of(1) == 100
+
+
+def test_percent_roundtrip_only_for_custom_cpk_atoms():
+    st = ms.StyleState()
+    st.bind([5, 6, 7], "id", ["C", "C", "C"])
+    st.set_atoms([0], "custom_cpk")
+    st.set_percent([0], 70)
+    st.set_atoms([1], "stick")
+    st.set_percent([1], 40)  # stale size of an atom that is not custom CPK
+    data = st.to_dict()
+    assert data["atom_percents"] == {"5": 70}
+    st2 = ms.StyleState()
+    st2.load_dict(data)
+    st2.bind([5, 6, 7], "id", ["C", "C", "C"])
+    assert st2.style_of(0) == "custom_cpk" and st2.percent_of(0) == 70
+    assert st2.percent_of(1) == 100
+
+
+def test_percent_index_mode_roundtrip_and_garbage():
+    st = ms.StyleState()
+    st.set_atoms([2], "custom_cpk")
+    st.set_percent([2], 150)
+    assert st.to_dict()["index_percents"] == {"2": 150}
+    st2 = ms.StyleState()
+    st2.load_dict({"indices": {"2": "custom_cpk"}, "index_percents": {"2": "500", "x": 1, "3": "bad", "-1": 80, "4": 100}})
+    assert st2.pct_by_index == {2: ms.PCT_MAX}
+
+
+def test_custom_cpk_sphere_radius_scales_with_percent():
+    spheres, _ = ms.build_scene(
+        ["C", "O", "H"], POS, [], lambda i: "custom_cpk", [RED, BLUE, RED], CFG,
+        percents=lambda i: [50, 100, 200][i],
+    )
+    radii = {s[0]: s[2] for s in spheres}
+    assert radii[0] == pytest.approx(0.85) and radii[1] == pytest.approx(1.7)
+    assert radii[2] == pytest.approx(3.4)
+    assert all(s[3] == 32 for s in spheres)  # CPK resolution
+
+
+def test_custom_cpk_without_percents_behaves_like_100_percent():
+    spheres, _ = scene(["custom_cpk", "cpk", "stick"])
+    assert spheres[0][2] == pytest.approx(spheres[1][2])
+
+
+def test_custom_cpk_pair_overlapping_spheres_hides_the_bond():
+    _, segs = ms.build_scene(
+        ["C", "O"], POS[:2], [(0, 1, 1.0, 0)], lambda i: "custom_cpk", [RED, BLUE], CFG,
+        percents=lambda i: 100,
+    )
+    assert segs == []
+
+
+def test_shrunken_custom_cpk_pair_gets_a_bridging_stick():
+    _, segs = ms.build_scene(
+        ["C", "O"], POS[:2], [(0, 1, 1.0, 0)], lambda i: "custom_cpk", [RED, BLUE], CFG,
+        percents=lambda i: 20,  # radii 0.34 each: 0.68 < bond length 1.0
+    )
+    assert len(segs) == 2  # two halves in the atom colours
+    assert all(s[2] == pytest.approx(0.1) for s in segs)
+
+
+def test_custom_cpk_next_to_stick_uses_the_stick_radius():
+    _, segs = ms.build_scene(
+        ["C", "O"], POS[:2], [(0, 1, 1.0, 0)], lambda i: ["custom_cpk", "stick"][i], [RED, BLUE], CFG,
+        percents=lambda i: 50,
+    )
+    assert segs and segs[0][2] == pytest.approx(0.15)
+
+
+def test_plain_cpk_pair_is_still_hidden_even_if_far_apart():
+    _, segs = ms.build_scene(
+        ["C", "O"], [(0, 0, 0), (50, 0, 0)], [(0, 1, 1.0, 0)], lambda i: "cpk", [RED, BLUE], CFG,
+    )
+    assert segs == []
+
+
+class FakeSpin:
+    def __init__(self):
+        self.value, self.enabled, self.blocked = 100, True, []
+
+    def blockSignals(self, flag):
+        self.blocked.append(flag)
+
+    def setValue(self, v):
+        self.value = v
+
+    def setEnabled(self, flag):
+        self.enabled = flag
+
+
+def test_spin_shows_shared_size_and_is_enabled_only_for_custom_cpk():
+    st = ms.StyleState()
+    p = SimpleNamespace(state=st)
+    spin = FakeSpin()
+    ms.StylerPanel._set_spin(p, spin, [0, 1])
+    assert spin.value == 100 and spin.enabled is False
+    st.set_atoms([0, 1], "custom_cpk")
+    st.set_percent([0, 1], 80)
+    ms.StylerPanel._set_spin(p, spin, [0, 1])
+    assert spin.value == 80 and spin.enabled is True
+    assert spin.blocked == [True, False, True, False]  # no feedback loop
+    ms.StylerPanel._set_spin(p, spin, [])  # empty selection must not crash
+    assert spin.value == 100
+
+
+def test_percent_edit_updates_state_and_redraws():
+    st = ms.StyleState()
+    st.set_atoms([0, 1], "custom_cpk")
+    p = SimpleNamespace(state=st, redraw=MagicMock(), _sync_combos=MagicMock())
+    ms.StylerPanel._on_percent(p, [0, 1], 65)
+    p._sync_combos.assert_called_once()
+    assert st.percent_of(0) == st.percent_of(1) == 65
+    p.redraw.assert_called_once()
+
+
+def test_choosing_custom_cpk_enables_the_spin_via_sync():
+    p = make_panel()
+    spin = FakeSpin()
+    p._spins = [(spin, [0, 1])]
+    p._set_spin = lambda sp, idx: ms.StylerPanel._set_spin(p, sp, idx)
+    c = FakeCombo()
+    p._combos = [(c, [0, 1])]
+    ms.StylerPanel._on_choice(p, c, [0, 1], ms.STYLES.index("custom_cpk"))
+    assert p.state.common_style([0, 1]) == "custom_cpk"
+    assert spin.enabled is True
+    ms.StylerPanel._on_choice(p, c, [0, 1], ms.STYLES.index("stick"))
+    assert spin.enabled is False
