@@ -9,6 +9,7 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -151,3 +152,13 @@ def test_render_custom_cpk_with_percent_and_highlight():
         ms._panel = saved_panel
         st.clear()
         plotter.close()
+
+
+def test_highlight_mesh_uses_the_configured_opacity():
+    mol, _ = two_molecules()
+    plotter = MagicMock()
+    v3d = SimpleNamespace(plotter=plotter, atom_positions_3d=np.zeros((mol.GetNumAtoms(), 3)))
+    ms.draw_highlight(v3d, mol, [0, 1])
+    kwargs = plotter.add_mesh.call_args.kwargs
+    assert kwargs["opacity"] == ms.HIGHLIGHT_OPACITY == 0.15
+    assert kwargs["color"] == "yellow" and kwargs["name"] == ms.HIGHLIGHT_NAME

@@ -60,9 +60,9 @@ DEFAULT_STYLE = "ball_and_stick"
 NEW_MOLECULE_OVERLAP = 0.5
 MIXED_LABEL = "(mixed)"
 POLL_MS = 600
-WIDTH_SCALE = 1.2  # panel is 20% wider than Qt's default size hint
-COLUMN_WIDTHS = (170, 120, 80)  # Molecule/Atom, Style, Size %
-DOCK_MARGIN = 40
+COLUMN_WIDTHS = (150, 110, 75)  # Molecule/Atom, Style, Size %
+DOCK_MARGIN = 30  # tree frame + dock margins
+HIGHLIGHT_OPACITY = 0.15  # yellow selection shell (host's 3D-edit uses 0.3)
 
 STYLES = ["cpk", "custom_cpk", "ball_and_stick", "stick", "wireframe", "hidden"]
 CPK_LIKE = ("cpk", "custom_cpk")  # van der Waals spheres
@@ -693,7 +693,11 @@ def draw_highlight(v3d, mol, indices):
         orient=False,
     )
     plotter.add_mesh(
-        glyphs, color="yellow", opacity=0.3, name=HIGHLIGHT_NAME, pickable=False
+        glyphs,
+        color="yellow",
+        opacity=HIGHLIGHT_OPACITY,
+        name=HIGHLIGHT_NAME,
+        pickable=False,
     )
 
 
@@ -751,7 +755,7 @@ class StylerPanel:
         self.tree = QTreeWidget()
         self.tree.setColumnCount(3)
         self.tree.setHeaderLabels(["Molecule / Atom", "Style", "Size %"])
-        self.column_widths = [int(w * WIDTH_SCALE) for w in COLUMN_WIDTHS]
+        self.column_widths = list(COLUMN_WIDTHS)
         for col, width in enumerate(self.column_widths):
             self.tree.setColumnWidth(col, width)
         self.tree.itemExpanded.connect(self._on_expanded)
@@ -773,11 +777,7 @@ class StylerPanel:
 
         self.dock.setWidget(body)
         self.mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
-        # room for all three columns plus the tree frame / dock margins
-        width = max(
-            int(self.dock.sizeHint().width() * WIDTH_SCALE),
-            sum(self.column_widths) + DOCK_MARGIN,
-        )
+        width = sum(self.column_widths) + DOCK_MARGIN
         self.mw.resizeDocks([self.dock], [width], Qt.Orientation.Horizontal)
 
         self.timer = QTimer(self.dock)

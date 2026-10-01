@@ -1025,7 +1025,11 @@ def test_choosing_custom_cpk_enables_the_spin_via_sync():
     assert spin.enabled is False
 
 
-def test_panel_width_budget_covers_all_three_columns():
+def test_panel_width_is_compact_but_covers_all_three_columns():
     assert len(ms.COLUMN_WIDTHS) == 3  # Molecule/Atom, Style, Size %
-    needed = sum(int(w * ms.WIDTH_SCALE) for w in ms.COLUMN_WIDTHS) + ms.DOCK_MARGIN
-    assert needed >= 400
+    width = sum(ms.COLUMN_WIDTHS) + ms.DOCK_MARGIN
+    assert 330 <= width <= 400
+
+
+def test_highlight_is_more_transparent_than_the_host_selection():
+    assert ms.HIGHLIGHT_OPACITY == pytest.approx(0.15)  # half of the host's 0.3
