@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 1.0.0 — without leading v)'
+        description: 'Release version (e.g. 0.1.0 — without leading v)'
         required: true
   push:
     tags:
@@ -36,18 +36,19 @@ jobs:
           git push origin "v$VERSION"
 
       - name: Verify version matches plugin source
+        # Registration rejects an asset whose PLUGIN_VERSION disagrees with the
+        # tag, so fail here instead of after the release exists.
         run: |
-          INPUT="$VERSION"
           FILE_VERSION=$(python3 -c "
           import re
           text = open('molecule_styler.py', encoding='utf-8').read()
           m = re.search(r\"PLUGIN_VERSION\s*=\s*['\\\"](.+?)['\\\"]\", text)
           print(m.group(1).strip() if m else '')
           ")
-          echo "Input version : $INPUT"
-          echo "File version  : $FILE_VERSION"
-          if [ "$INPUT" != "$FILE_VERSION" ]; then
-            echo "ERROR: input version '$INPUT' does not match PLUGIN_VERSION '$FILE_VERSION' in molecule_styler.py"
+          echo "Tag version  : $VERSION"
+          echo "File version : $FILE_VERSION"
+          if [ "$VERSION" != "$FILE_VERSION" ]; then
+            echo "ERROR: tag '$VERSION' does not match PLUGIN_VERSION '$FILE_VERSION'"
             exit 1
           fi
 
@@ -55,23 +56,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="$VERSION"
-          gh release create "v$TAG" \
-            --title "Molecule Styler $TAG" \
+          gh release create "v$VERSION" \
+            --title "Molecule Styler $VERSION" \
             --generate-notes \
             molecule_styler.py
 
-      - name: Trigger moleditpy-plugins registry update
-        if: success()
+      # No-op unless a REGISTRY_PAT secret exists (only the registry maintainer
+      # can issue one); third-party repos use the registration issue instead.
+      - name: Trigger the plugin registry update
+        id: dispatch
         continue-on-error: true
         env:
           REGISTRY_PAT: ${{ secrets.REGISTRY_PAT }}
         run: |
-          TAG="$VERSION"
-          if [ -n "$REGISTRY_PAT" ]; then
-            curl -s -X POST \
-              -H "Authorization: Bearer $REGISTRY_PAT" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/HiroYokoyama/moleditpy-plugins/dispatches" \
-              -d "{\"event_type\":\"plugin_release\",\"client_payload\":{\"repo\":\"${{ github.repository }}\",\"tag\":\"v$TAG\"}}"
+          if [ -z "$REGISTRY_PAT" ]; then
+            echo "registered=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          curl -sf -X POST \
+            -H "Authorization: Bearer $REGISTRY_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/HiroYokoyama/moleditpy-plugins/dispatches" \
+            -d "{\"event_type\":\"plugin_release\",\"client_payload\":{\"repo\":\"${{ github.repository }}\",\"tag\":\"v$VERSION\"}}"
+          echo "registered=true" >> "$GITHUB_OUTPUT"
+
+      - name: How to get into the plugin registry
+        if: steps.dispatch.outputs.registered != 'true'
+        run: |
+          echo "Release published, but it was NOT registered automatically:"
+          echo "no REGISTRY_PAT secret is set on this repository."
+          echo
+          echo "Open a 'Request Plugin Registration / Update' issue with the release URL:"
+          echo "  https://github.com/HiroYokoyama/moleditpy-plugins/issues/new/choose"
+          echo "  asset: molecule_styler.py"

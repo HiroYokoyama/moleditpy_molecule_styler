@@ -1,6 +1,6 @@
 # Molecule Styler Plugin
 
-[![CI](https://github.com/HiroYokoyama/moleditpy_molecule_styler/actions/workflows/ci.yml/badge.svg)](https://github.com/HiroYokoyama/moleditpy_molecule_styler/actions/workflows/ci.yml)
+[![CI](https://github.com/HiroYokoyama/moleditpy_molecule_styler/actions/workflows/test.yml/badge.svg)](https://github.com/HiroYokoyama/moleditpy_molecule_styler/actions/workflows/test.yml)
 
 ## Overview
 Molecule Styler adds a dock panel on the right of the MoleditPy window that lists
