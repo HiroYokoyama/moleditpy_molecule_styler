@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.1.1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -355,7 +355,10 @@ def _render_body(mw, v3d, mol):
     settings = mw.init_manager.settings
     plotter = v3d.plotter
 
-    v3d.edit_3d_manager.clear_measurement_selection()
+    edit_3d = getattr(mw, "edit_3d_manager", None)  # lives on MainWindow, not View3DManager
+    clear_sel = getattr(edit_3d, "clear_measurement_selection", None)
+    if clear_sel is not None:
+        clear_sel()
     v3d._3d_color_map.clear()
     camera_state = plotter.camera_position
     old_axes = getattr(v3d, "axes_actor", None)
