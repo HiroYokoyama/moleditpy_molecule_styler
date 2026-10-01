@@ -99,11 +99,18 @@ def test_state_index_mode_roundtrip():
     assert st2.styles == {0: "stick", 1: "hidden", 5: "stick"}
 
 
-def test_state_load_dict_filters_garbage_and_accepts_flat_legacy_map():
+def test_state_load_dict_filters_garbage():
     st = ms.StyleState()
-    st.load_dict({"0": "stick", "x": "cpk", "2": "nope", "-1": "cpk", "3": "ball_and_stick"})
-    assert st.by_index == {0: "stick"}  # v0.2.0 flat index map
+    st.load_dict({"indices": {"0": "stick", "x": "cpk", "2": "nope", "-1": "cpk", "3": "ball_and_stick"},
+                  "atom_ids": {"7": "wireframe", "8": "bogus"}})
+    assert st.by_index == {0: "stick"} and st.by_id == {7: "wireframe"}
     st.load_dict(None)
+    assert not st.has_styles()
+
+
+def test_state_load_dict_ignores_unknown_formats():
+    st = ms.StyleState()
+    st.load_dict({"0": "stick", "1": "cpk"})  # the flat map of v0.2.0 is no longer read
     assert not st.has_styles()
 
 
@@ -118,7 +125,7 @@ def test_state_id_mode_follows_atoms_when_indices_change():
     assert st.common_style([1]) == "cpk"
 
 
-def test_state_id_roundtrip_and_legacy_index_migration():
+def test_state_id_roundtrip():
     st = ms.StyleState()
     st.bind([5, 6, 7], "id")
     st.set_atoms([0, 2], "stick")
@@ -128,10 +135,6 @@ def test_state_id_roundtrip_and_legacy_index_migration():
     st2.bind([7, 6, 5], "id")
     assert st2.style_of(0) == "stick" and st2.style_of(2) == "stick"
     assert st2.style_of(1) == ms.DEFAULT_STYLE
-    old = ms.StyleState()  # v0.2.0 project: styles keyed by RDKit index
-    old.load_dict({"1": "wireframe"})
-    old.bind([20, 21, 22], "id")
-    assert old.by_id == {21: "wireframe"} and old.by_index == {}
 
 
 def test_state_index_and_id_dicts_do_not_mix():
@@ -439,8 +442,8 @@ def test_save_load_reset_roundtrip(monkeypatch):
     assert ms._state.styles == {}
     ms._load(saved)
     assert ms._state.styles == {0: "stick", 2: "stick"}
-    ms._load({ms.SAVE_KEY: {"0": "stick"}})  # v0.2.0 project: flat index map
-    assert ms._state.styles == {0: "stick"}
+    ms._load({ms.SAVE_KEY: {"0": "stick"}})  # v0.2.0 flat map: not supported any more
+    assert not ms._state.has_styles()
     ms._load(None)
     assert ms._state.styles == {}
 
@@ -455,7 +458,7 @@ def test_save_records_active_style_even_without_per_atom_styles(monkeypatch):
 def test_load_with_styles_switches_style_and_ticks_menu(monkeypatch):
     ctx, mw, actions = _ctx("cpk")
     monkeypatch.setattr(ms, "_context", ctx)
-    ms._load({ms.SAVE_KEY: {"1": "stick"}, ms.ACTIVE_KEY: False})
+    ms._load({ms.SAVE_KEY: {"indices": {"1": "stick"}}, ms.ACTIVE_KEY: False})
     assert mw.view_3d_manager.current_3d_style == ms.STYLE_NAME
     assert actions[1].checked
     ms._state.clear()
@@ -481,7 +484,7 @@ def test_load_does_not_redraw_previous_molecule(monkeypatch):
     mw.view_3d_manager.set_3d_style = MagicMock()
     mw.view_3d_manager.draw_molecule_3d = MagicMock()
     monkeypatch.setattr(ms, "_context", ctx)
-    ms._load({ms.SAVE_KEY: {"0": "stick"}})
+    ms._load({ms.SAVE_KEY: {"indices": {"0": "stick"}}})
     mw.view_3d_manager.set_3d_style.assert_not_called()
     mw.view_3d_manager.draw_molecule_3d.assert_not_called()
     ms._state.clear()

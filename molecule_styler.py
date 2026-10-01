@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.3.0"
+PLUGIN_VERSION = "0.3.1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -164,14 +164,9 @@ class StyleState:
         self.keys = []
 
     def bind(self, keys, mode):
-        """Attach the current molecule's key list; migrate legacy index entries."""
+        """Attach the current molecule's key list and key mode."""
         self.keys = list(keys)
         self.mode = mode
-        if mode == "id" and self.by_index:
-            for idx, style in self.by_index.items():
-                if idx < len(self.keys):
-                    self.by_id[self.keys[idx]] = style
-            self.by_index = {}
 
     def _active(self):
         return self.by_id if self.mode == "id" else self.by_index
@@ -240,17 +235,12 @@ class StyleState:
         return result
 
     def load_dict(self, data):
-        """Restore from `to_dict` output (or the flat index map of v0.2.0)."""
+        """Restore from `to_dict` output; anything else is ignored."""
         self.clear()
         if not isinstance(data, dict):
             return
-        if "atom_ids" in data or "indices" in data:
-            self.by_id = self._parse(data.get("atom_ids"))
-            self.by_index = self._parse(data.get("indices"))
-        else:
-            self.by_index = self._parse(data)
-        if self.mode == "id" and self.by_index:
-            self.bind(self.keys, "id")
+        self.by_id = self._parse(data.get("atom_ids"))
+        self.by_index = self._parse(data.get("indices"))
 
 
 def _unit(v):
