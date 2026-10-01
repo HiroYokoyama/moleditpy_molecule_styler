@@ -1023,3 +1023,9 @@ def test_choosing_custom_cpk_enables_the_spin_via_sync():
     assert spin.enabled is True
     ms.StylerPanel._on_choice(p, c, [0, 1], ms.STYLES.index("stick"))
     assert spin.enabled is False
+
+
+def test_panel_width_budget_covers_all_three_columns():
+    assert len(ms.COLUMN_WIDTHS) == 3  # Molecule/Atom, Style, Size %
+    needed = sum(int(w * ms.WIDTH_SCALE) for w in ms.COLUMN_WIDTHS) + ms.DOCK_MARGIN
+    assert needed >= 400

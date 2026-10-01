@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.5.0"
+PLUGIN_VERSION = "0.5.1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -61,6 +61,8 @@ NEW_MOLECULE_OVERLAP = 0.5
 MIXED_LABEL = "(mixed)"
 POLL_MS = 600
 WIDTH_SCALE = 1.2  # panel is 20% wider than Qt's default size hint
+COLUMN_WIDTHS = (170, 120, 80)  # Molecule/Atom, Style, Size %
+DOCK_MARGIN = 40
 
 STYLES = ["cpk", "custom_cpk", "ball_and_stick", "stick", "wireframe", "hidden"]
 CPK_LIKE = ("cpk", "custom_cpk")  # van der Waals spheres
@@ -749,7 +751,9 @@ class StylerPanel:
         self.tree = QTreeWidget()
         self.tree.setColumnCount(3)
         self.tree.setHeaderLabels(["Molecule / Atom", "Style", "Size %"])
-        self.tree.setColumnWidth(0, int(170 * WIDTH_SCALE))
+        self.column_widths = [int(w * WIDTH_SCALE) for w in COLUMN_WIDTHS]
+        for col, width in enumerate(self.column_widths):
+            self.tree.setColumnWidth(col, width)
         self.tree.itemExpanded.connect(self._on_expanded)
         self.tree.itemSelectionChanged.connect(self._on_selection)
         layout.addWidget(self.tree, 1)
@@ -769,7 +773,11 @@ class StylerPanel:
 
         self.dock.setWidget(body)
         self.mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
-        width = int(self.dock.sizeHint().width() * WIDTH_SCALE)
+        # room for all three columns plus the tree frame / dock margins
+        width = max(
+            int(self.dock.sizeHint().width() * WIDTH_SCALE),
+            sum(self.column_widths) + DOCK_MARGIN,
+        )
         self.mw.resizeDocks([self.dock], [width], Qt.Orientation.Horizontal)
 
         self.timer = QTimer(self.dock)
