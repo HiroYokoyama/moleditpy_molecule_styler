@@ -17,6 +17,9 @@ wireframe and a metal centre as CPK in the same view.
 * **Per-molecule styles:** CPK, Ball & Stick, Stick, Wireframe or Hidden.
 * **Per-atom styles:** expand a molecule to style single atoms; the molecule row
   shows `(mixed)` when its atoms differ.
+* **Opens itself:** selecting Molecule Styler in the 3D Style menu (or opening a
+  project that uses it) opens the panel if it is closed, and never opens a second one.
+* **Unselect** clears the selection and the highlight.
 * **Highlight:** selecting a row in the panel marks its atoms in the 3D view with a
   yellow translucent shell, like the 3D-edit selection.
 * **Stable atom ids:** atoms are listed by the host's unique, 0-based atom id

@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.3.2"
+PLUGIN_VERSION = "0.3.3"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -875,14 +875,55 @@ class StylerPanel:
 # ---------------------------------------------------------------------------
 
 
-def _toggle_panel(context):
+def _create_panel(context):
     global _panel  # pylint: disable=global-statement
+    _panel = StylerPanel(context, _state)
+    context.register_window("styler_panel", _panel.dock)
+    return _panel
+
+
+def _panel_alive():
+    """True if the panel exists and its Qt dock has not been deleted."""
     if _panel is None:
-        _panel = StylerPanel(context, _state)
-        context.register_window("styler_panel", _panel.dock)
-        _panel.activate_style()
+        return False
+    try:
+        _panel.dock.isVisible()
+    except RuntimeError:  # underlying C++ object already deleted
+        return False
+    return True
+
+
+def ensure_panel(context):
+    """Make sure the panel exists and is shown; never opens a second one."""
+    if not _panel_alive():
+        _create_panel(context)
+    elif not _panel.dock.isVisible():
+        _panel.dock.setVisible(True)
+
+
+def _toggle_panel(context):
+    if not _panel_alive():
+        _create_panel(context).activate_style()
         return
     _panel.toggle()
+
+
+_style_was_active = False
+_watch_timer = None
+
+
+def _watch_style(context):
+    """Reopen the panel whenever this plugin's style gets selected.
+
+    The 3D Style menu, the project loader and the panel itself all just set the
+    host's current style, so watching that value catches every route. Closing
+    the panel while the style stays selected does not reopen it.
+    """
+    global _style_was_active  # pylint: disable=global-statement
+    active = _is_active(context)
+    if active and not _style_was_active:
+        ensure_panel(context)
+    _style_was_active = active
 
 
 def _is_active(context):
@@ -940,3 +981,11 @@ def initialize(context):
     context.register_save_handler(_save)
     context.register_load_handler(_load)
     context.register_document_reset_handler(_reset_document)
+
+    global _watch_timer, _style_was_active  # pylint: disable=global-statement
+    if _watch_timer is not None:
+        _watch_timer.stop()
+    _style_was_active = _is_active(context)
+    _watch_timer = QTimer(context.get_main_window())
+    _watch_timer.timeout.connect(lambda: _watch_style(context))
+    _watch_timer.start(POLL_MS)

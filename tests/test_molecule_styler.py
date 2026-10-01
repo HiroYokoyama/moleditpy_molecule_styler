@@ -407,9 +407,24 @@ def test_rebuild_if_changed_only_when_signature_differs():
     assert st.style_of(5) == "cpk"
 
 
+class FakeDock:
+    def __init__(self, visible=True, dead=False):
+        self.visible, self.dead = visible, dead
+
+    def isVisible(self):
+        if self.dead:
+            raise RuntimeError("wrapped C/C++ object has been deleted")
+        return self.visible
+
+    def setVisible(self, flag):
+        self.visible = flag
+
+
 # --- plugin entry points -----------------------------------------------------
 
-def test_initialize_registers_everything():
+def test_initialize_registers_everything(monkeypatch):
+    monkeypatch.setattr(ms, "QTimer", MagicMock())
+    monkeypatch.setattr(ms, "_watch_timer", None)
     ctx = MagicMock()
     ms.initialize(ctx)
     ctx.register_3d_style.assert_called_once_with(ms.STYLE_NAME, ms.render_styled)
@@ -504,7 +519,7 @@ def test_toggle_panel_creates_once_then_toggles(monkeypatch):
     class FakePanel:
         def __init__(self, ctx, state):
             created.append(self)
-            self.dock = object()
+            self.dock = FakeDock()
             self.toggled = 0
             self.activated = 0
 
@@ -730,3 +745,123 @@ def test_comparison_uses_unique_ids_not_indices():
     st.set_atoms([0], "cpk")  # atom with unique id 10
     st.bind([12, 11, 10], "id", ["O", "C", "C"])  # same atoms, shuffled indices
     assert st.style_of(2) == "cpk"
+
+
+# --- reopen the panel when the style is selected ------------------------------
+
+class FakePanelObj:
+    def __init__(self, ctx=None, state=None, visible=True, dead=False):
+        self.dock = FakeDock(visible, dead)
+        self.toggled = 0
+        self.activated = 0
+
+    def toggle(self):
+        self.toggled += 1
+
+    def activate_style(self):
+        self.activated += 1
+
+
+def _fresh(monkeypatch, panel=None):
+    created = []
+
+    def factory(ctx, state):
+        obj = FakePanelObj()
+        created.append(obj)
+        return obj
+
+    monkeypatch.setattr(ms, "StylerPanel", factory)
+    monkeypatch.setattr(ms, "_panel", panel)
+    monkeypatch.setattr(ms, "_style_was_active", False)
+    return created
+
+
+def test_ensure_panel_creates_when_missing_and_registers_window(monkeypatch):
+    created = _fresh(monkeypatch)
+    ctx = MagicMock()
+    ms.ensure_panel(ctx)
+    assert len(created) == 1 and ms._panel is created[0]
+    ctx.register_window.assert_called_once()
+
+
+def test_ensure_panel_shows_hidden_panel_without_creating_another(monkeypatch):
+    hidden = FakePanelObj(visible=False)
+    created = _fresh(monkeypatch, hidden)
+    ms.ensure_panel(MagicMock())
+    assert hidden.dock.visible is True and created == []
+
+
+def test_ensure_panel_leaves_visible_panel_alone(monkeypatch):
+    shown = FakePanelObj(visible=True)
+    created = _fresh(monkeypatch, shown)
+    ms.ensure_panel(MagicMock())
+    assert created == [] and ms._panel is shown
+
+
+def test_ensure_panel_recreates_a_deleted_dock(monkeypatch):
+    dead = FakePanelObj(dead=True)
+    created = _fresh(monkeypatch, dead)
+    ms.ensure_panel(MagicMock())
+    assert len(created) == 1 and ms._panel is created[0]
+
+
+def test_panel_alive_checks(monkeypatch):
+    monkeypatch.setattr(ms, "_panel", None)
+    assert ms._panel_alive() is False
+    monkeypatch.setattr(ms, "_panel", FakePanelObj(dead=True))
+    assert ms._panel_alive() is False
+    monkeypatch.setattr(ms, "_panel", FakePanelObj())
+    assert ms._panel_alive() is True
+
+
+def test_watch_opens_panel_once_when_style_becomes_active(monkeypatch):
+    created = _fresh(monkeypatch)
+    ctx, mw, _ = _ctx("ball_and_stick")
+    ms._watch_style(ctx)
+    assert created == []  # not our style: nothing happens
+    mw.view_3d_manager.current_3d_style = ms.STYLE_NAME  # user picks it in the menu
+    ms._watch_style(ctx)
+    assert len(created) == 1
+    ms._watch_style(ctx)  # still active: no second panel
+    assert len(created) == 1
+
+
+def test_watch_reopens_after_style_is_toggled_away_and_back(monkeypatch):
+    created = _fresh(monkeypatch)
+    ctx, mw, _ = _ctx(ms.STYLE_NAME)
+    ms._watch_style(ctx)
+    assert len(created) == 1
+    created[0].dock.visible = False  # user closed the panel while the style stays on
+    ms._watch_style(ctx)
+    assert created[0].dock.visible is False  # not forced open again
+    mw.view_3d_manager.current_3d_style = "cpk"
+    ms._watch_style(ctx)
+    mw.view_3d_manager.current_3d_style = ms.STYLE_NAME  # toggled back
+    ms._watch_style(ctx)
+    assert created[0].dock.visible is True and len(created) == 1
+
+
+def test_initialize_starts_the_style_watcher(monkeypatch):
+    timers = []
+
+    class FakeTimer:
+        def __init__(self, parent=None):
+            self.connected = []
+            self.started = None
+            self.stopped = False
+            timers.append(self)
+            self.timeout = SimpleNamespace(connect=self.connected.append)
+
+        def start(self, ms_):
+            self.started = ms_
+
+        def stop(self):
+            self.stopped = True
+
+    monkeypatch.setattr(ms, "QTimer", FakeTimer)
+    monkeypatch.setattr(ms, "_watch_timer", None)
+    ms.initialize(MagicMock())
+    assert timers[0].started == ms.POLL_MS and len(timers[0].connected) == 1
+    ms.initialize(MagicMock())  # plugin reload: the old watcher is stopped
+    assert timers[0].stopped and len(timers) == 2
+    monkeypatch.setattr(ms, "_watch_timer", None)
