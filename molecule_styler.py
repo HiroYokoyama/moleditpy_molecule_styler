@@ -673,9 +673,18 @@ class StylerPanel:
             v3d.set_3d_style(STYLE_NAME)
         self.context.mark_project_modified()
 
+    def activate_style(self):
+        """Switch the 3D view to this plugin's style (no-op if already active)."""
+        v3d = getattr(self.mw, "view_3d_manager", None)
+        if v3d is not None and getattr(v3d, "current_3d_style", None) != STYLE_NAME:
+            v3d.set_3d_style(STYLE_NAME)
+
     def toggle(self):
-        """Show or hide the dock."""
-        self.dock.setVisible(not self.dock.isVisible())
+        """Show or hide the dock; showing it switches to the plugin's style."""
+        show = not self.dock.isVisible()
+        self.dock.setVisible(show)
+        if show:
+            self.activate_style()
 
 
 # ---------------------------------------------------------------------------
@@ -688,6 +697,7 @@ def _toggle_panel(context):
     if _panel is None:
         _panel = StylerPanel(context, _state)
         context.register_window("styler_panel", _panel.dock)
+        _panel.activate_style()
         return
     _panel.toggle()
 

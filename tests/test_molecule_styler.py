@@ -357,6 +357,10 @@ def test_toggle_panel_creates_once_then_toggles(monkeypatch):
             created.append(self)
             self.dock = object()
             self.toggled = 0
+            self.activated = 0
+
+        def activate_style(self):
+            self.activated += 1
 
         def toggle(self):
             self.toggled += 1
@@ -367,6 +371,7 @@ def test_toggle_panel_creates_once_then_toggles(monkeypatch):
     ms._toggle_panel(ctx)
     ms._toggle_panel(ctx)
     assert len(created) == 1 and created[0].toggled == 1
+    assert created[0].activated == 1  # switched to the style when first opened
     ctx.register_window.assert_called_once()
     monkeypatch.setattr(ms, "_panel", None)
 
@@ -376,3 +381,27 @@ def test_render_styled_skips_when_reentrant():
     mw = SimpleNamespace(view_3d_manager=v3d)
     ms.render_styled(mw, object())  # must return without touching anything else
     assert v3d._drawing_3d is True
+
+
+def test_activate_style_switches_only_when_needed():
+    v3d = MagicMock()
+    p = SimpleNamespace(mw=SimpleNamespace(view_3d_manager=v3d))
+    v3d.current_3d_style = "cpk"
+    ms.StylerPanel.activate_style(p)
+    v3d.set_3d_style.assert_called_once_with(ms.STYLE_NAME)
+    v3d.current_3d_style = ms.STYLE_NAME
+    ms.StylerPanel.activate_style(p)
+    v3d.set_3d_style.assert_called_once()
+
+
+def test_toggle_shows_then_hides_and_switches_style_on_show():
+    dock = MagicMock()
+    dock.isVisible.return_value = False
+    p = SimpleNamespace(dock=dock, activate_style=MagicMock())
+    ms.StylerPanel.toggle(p)
+    dock.setVisible.assert_called_with(True)
+    p.activate_style.assert_called_once()
+    dock.isVisible.return_value = True
+    ms.StylerPanel.toggle(p)
+    dock.setVisible.assert_called_with(False)
+    p.activate_style.assert_called_once()
