@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.5.0"
+PLUGIN_VERSION = "0.5.1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -759,7 +759,7 @@ class StylerPanel:
         self.selected = []  # RDKit indices highlighted in 3D
 
         self.dock = QDockWidget("Molecule Styler", self.mw)
-        self.dock.setObjectName("MoleculeStylerDock")
+        self.dock.setObjectName(DOCK_OBJECT_NAME)
         self.tree, body = _make_clearing_widgets(self._unselect)
         layout = QVBoxLayout(body)
 
@@ -1012,8 +1012,36 @@ class StylerPanel:
 # ---------------------------------------------------------------------------
 
 
+DOCK_OBJECT_NAME = "MoleculeStylerDock"
+WATCH_ATTR = "_molecule_styler_watch_timer"
+
+
+def _purge_stale_docks(mw, keep=None):
+    """Remove every Molecule Styler dock on `mw` except `keep`.
+
+    The module-level `_panel` is lost when the plugin module is loaded a second
+    time (reload, reinstall, initialize() called again) while the old dock is
+    still attached to the main window, which is how two panels ended up open.
+    The window itself is the only thing both module instances share, so look
+    there instead.
+    """
+    find = getattr(mw, "findChildren", None)
+    if find is None:
+        return
+    for dock in find(QDockWidget, DOCK_OBJECT_NAME):
+        if dock is keep:
+            continue
+        try:
+            mw.removeDockWidget(dock)
+            dock.close()
+            dock.deleteLater()
+        except RuntimeError:  # already deleted on the Qt side
+            logger.debug("stale dock already gone", exc_info=True)
+
+
 def _create_panel(context):
     global _panel  # pylint: disable=global-statement
+    _purge_stale_docks(context.get_main_window())
     _panel = StylerPanel(context, _state)
     context.register_window("styler_panel", _panel.dock)
     return _panel
@@ -1057,6 +1085,8 @@ def _watch_style(context):
     the panel while the style stays selected does not reopen it.
     """
     global _style_was_active  # pylint: disable=global-statement
+    if _panel_alive():
+        _purge_stale_docks(context.get_main_window(), keep=_panel.dock)
     active = _is_active(context)
     if active and not _style_was_active:
         ensure_panel(context)
@@ -1120,9 +1150,12 @@ def initialize(context):
     context.register_document_reset_handler(_reset_document)
 
     global _watch_timer, _style_was_active  # pylint: disable=global-statement
-    if _watch_timer is not None:
-        _watch_timer.stop()
+    mw = context.get_main_window()
+    for old in (_watch_timer, getattr(mw, WATCH_ATTR, None)):  # this module's and a previous one's
+        if old is not None:
+            old.stop()
     _style_was_active = _is_active(context)
-    _watch_timer = QTimer(context.get_main_window())
+    _watch_timer = QTimer(mw)
+    setattr(mw, WATCH_ATTR, _watch_timer)
     _watch_timer.timeout.connect(lambda: _watch_style(context))
     _watch_timer.start(POLL_MS)
