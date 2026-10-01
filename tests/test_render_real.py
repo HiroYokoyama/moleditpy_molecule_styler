@@ -102,3 +102,31 @@ def test_render_styled_empty_molecule_clears_scene():
         assert v3d.atom_actor is None and v3d.current_mol is None
     finally:
         plotter.close()
+
+
+def test_render_styled_uses_unique_atom_ids_and_draws_highlight():
+    plotter = pv.Plotter(off_screen=True)
+    mw, v3d, _ = make_mw(plotter)
+    mol, frags = two_molecules()
+    for atom in mol.GetAtoms():  # the host stamps a unique, 0-based id on each atom
+        atom.SetIntProp("_original_atom_id", 100 + atom.GetIdx())
+    st = ms._state
+    st.clear()
+    panel = SimpleNamespace(selected=[0, 1], notify_molecule=lambda m: None)
+    saved_panel = ms._panel
+    ms._panel = panel
+    try:
+        st.bind(*ms.atom_keys(mol))
+        st.set_atoms(frags[1], "cpk")
+        ms.render_styled(mw, mol)
+        assert st.mode == "id"
+        assert set(st.by_id) == {100 + i for i in frags[1]}
+        assert any(name == ms.HIGHLIGHT_NAME for name in plotter.actors)
+        panel.selected = []
+        ms.render_styled(mw, mol)
+        assert not any(name == ms.HIGHLIGHT_NAME for name in plotter.actors)
+    finally:
+        ms._panel = saved_panel
+        st.clear()
+        st.bind([], "index")
+        plotter.close()

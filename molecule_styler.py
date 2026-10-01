@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.3.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -127,55 +127,130 @@ def formula_of(symbols):
     return "".join(f"{k}{counts[k] if counts[k] > 1 else ''}" for k in order)
 
 
+ATOM_ID_PROP = "_original_atom_id"  # the host's unique, 0-based editor atom id
+
+
+def atom_keys(mol):
+    """Per-atom style keys: (keys, mode).
+
+    The host stamps every atom with a unique editor id (``_original_atom_id``,
+    counted from 0) that survives re-embedding and file round-trips, whereas the
+    RDKit index does not. Use it when every atom has one; otherwise fall back to
+    the index.
+    """
+    atoms = list(mol.GetAtoms())
+    ids = []
+    for atom in atoms:
+        if not atom.HasProp(ATOM_ID_PROP):
+            return list(range(len(atoms))), "index"
+        ids.append(atom.GetIntProp(ATOM_ID_PROP))
+    if len(set(ids)) != len(ids):
+        return list(range(len(atoms))), "index"
+    return ids, "id"
+
+
 class StyleState:
-    """Atom index -> style map; atoms not listed use DEFAULT_STYLE."""
+    """Atom -> style map; atoms not listed use DEFAULT_STYLE.
+
+    Styles are stored under the atom's unique id when the molecule has one
+    (``by_id``) and under the RDKit index otherwise (``by_index``). Callers
+    always speak in RDKit indices; ``bind`` tells the state how to translate.
+    """
 
     def __init__(self):
-        self.styles = {}
+        self.by_id = {}
+        self.by_index = {}
+        self.mode = "index"
+        self.keys = []
+
+    def bind(self, keys, mode):
+        """Attach the current molecule's key list; migrate legacy index entries."""
+        self.keys = list(keys)
+        self.mode = mode
+        if mode == "id" and self.by_index:
+            for idx, style in self.by_index.items():
+                if idx < len(self.keys):
+                    self.by_id[self.keys[idx]] = style
+            self.by_index = {}
+
+    def _active(self):
+        return self.by_id if self.mode == "id" else self.by_index
+
+    def key(self, idx):
+        """Storage key for the atom at RDKit index `idx`."""
+        if self.mode == "id" and idx < len(self.keys):
+            return self.keys[idx]
+        return idx
 
     def style_of(self, idx):
         """Style of one atom."""
-        return self.styles.get(idx, DEFAULT_STYLE)
+        return self._active().get(self.key(idx), DEFAULT_STYLE)
 
     def set_atoms(self, indices, style):
         """Assign `style` to every atom in `indices`."""
         if style not in STYLES:
             return
+        store = self._active()
         for i in indices:
+            k = self.key(i)
             if style == DEFAULT_STYLE:
-                self.styles.pop(i, None)
+                store.pop(k, None)
             else:
-                self.styles[i] = style
+                store[k] = style
 
     def common_style(self, indices):
         """The shared style of `indices`, or None when they differ."""
         found = {self.style_of(i) for i in indices}
         return found.pop() if len(found) == 1 else None
 
-    def prune(self, num_atoms):
-        """Drop entries for atoms that no longer exist."""
-        self.styles = {i: s for i, s in self.styles.items() if i < num_atoms}
+    @property
+    def styles(self):
+        """The live style map for the current key mode."""
+        return self._active()
+
+    def has_styles(self):
+        """True if any atom has a non-default style stored."""
+        return bool(self.by_id or self.by_index)
 
     def clear(self):
         """Back to the default style everywhere."""
-        self.styles.clear()
+        self.by_id.clear()
+        self.by_index.clear()
 
     def to_dict(self):
         """JSON-serialisable form for the project file."""
-        return {str(i): s for i, s in sorted(self.styles.items())}
+        out = {}
+        if self.by_id:
+            out["atom_ids"] = {str(k): v for k, v in sorted(self.by_id.items())}
+        if self.by_index:
+            out["indices"] = {str(k): v for k, v in sorted(self.by_index.items())}
+        return out
+
+    @staticmethod
+    def _parse(raw):
+        result = {}
+        if isinstance(raw, dict):
+            for key, style in raw.items():
+                try:
+                    idx = int(key)
+                except (TypeError, ValueError):
+                    continue
+                if idx >= 0 and style in STYLES and style != DEFAULT_STYLE:
+                    result[idx] = style
+        return result
 
     def load_dict(self, data):
-        """Restore from `to_dict` output, ignoring anything malformed."""
-        self.styles = {}
+        """Restore from `to_dict` output (or the flat index map of v0.2.0)."""
+        self.clear()
         if not isinstance(data, dict):
             return
-        for key, style in data.items():
-            try:
-                idx = int(key)
-            except (TypeError, ValueError):
-                continue
-            if idx >= 0 and style in STYLES and style != DEFAULT_STYLE:
-                self.styles[idx] = style
+        if "atom_ids" in data or "indices" in data:
+            self.by_id = self._parse(data.get("atom_ids"))
+            self.by_index = self._parse(data.get("indices"))
+        else:
+            self.by_index = self._parse(data)
+        if self.mode == "id" and self.by_index:
+            self.bind(self.keys, "id")
 
 
 def _unit(v):
@@ -410,6 +485,8 @@ def _render_body(mw, v3d, mol):
         for b in mol.GetBonds()
     ]
 
+    keys, mode = atom_keys(mol)
+    _state.bind(keys, mode)
     cfg = _make_cfg(settings, display_radii, pt)
     spheres, segments = build_scene(
         symbols, positions, bonds, _state.style_of, colors, cfg, bond_colors
@@ -473,6 +550,9 @@ def _render_body(mw, v3d, mol):
             except Exception:  # pylint: disable=broad-except
                 logger.debug("host helper %s failed", helper, exc_info=True)
 
+    if _panel is not None and _panel.selected:
+        draw_highlight(v3d, mol, _panel.selected)
+
     plotter.camera_position = camera_state
     vcam = getattr(getattr(plotter, "renderer", None), "GetActiveCamera", None)
     if vcam is not None:
@@ -493,6 +573,43 @@ def _render_body(mw, v3d, mol):
 # ---------------------------------------------------------------------------
 # Panel
 # ---------------------------------------------------------------------------
+
+
+HIGHLIGHT_NAME = "molecule_styler_highlight"
+
+
+def draw_highlight(v3d, mol, indices):
+    """Yellow translucent shells around `indices`, like the host's 3D-edit selection."""
+    import pyvista as pv  # host dependency; imported lazily for headless tests
+
+    plotter = v3d.plotter
+    try:
+        plotter.remove_actor(HIGHLIGHT_NAME)
+    except (AttributeError, RuntimeError, ValueError, TypeError):
+        logger.debug("highlight removal failed", exc_info=True)
+    indices = [i for i in indices if mol is not None and 0 <= i < mol.GetNumAtoms()]
+    positions = getattr(v3d, "atom_positions_3d", None)
+    if not indices or positions is None or len(positions) < mol.GetNumAtoms():
+        return
+    _, display_radii, pt = _host_constants(v3d)
+    cfg = _make_cfg({}, display_radii, pt)
+    radii = []
+    for i in indices:
+        sym = mol.GetAtomWithIdx(i).GetSymbol()
+        if _state.style_of(i) == "cpk":
+            radii.append(cfg["vdw"](sym) * 1.15)
+        else:
+            radii.append(cfg["display_radius"](sym) * 1.3)
+    src = pv.PolyData(np.array([positions[i] for i in indices]))
+    src["radii"] = np.array(radii)
+    glyphs = src.glyph(
+        scale="radii",
+        geom=pv.Sphere(radius=1.0, theta_resolution=16, phi_resolution=16),
+        orient=False,
+    )
+    plotter.add_mesh(
+        glyphs, color="yellow", opacity=0.3, name=HIGHLIGHT_NAME, pickable=False
+    )
 
 
 def _sync_style_menu(mw):
@@ -524,6 +641,7 @@ class StylerPanel:
         self.symbols = []
         self._signature = None
         self._combos = []  # (combo, indices)
+        self.selected = []  # RDKit indices highlighted in 3D
 
         self.dock = QDockWidget("Molecule Styler", self.mw)
         self.dock.setObjectName("MoleculeStylerDock")
@@ -549,6 +667,7 @@ class StylerPanel:
         self.tree.setHeaderLabels(["Molecule / Atom", "Style"])
         self.tree.setColumnWidth(0, int(170 * WIDTH_SCALE))
         self.tree.itemExpanded.connect(self._on_expanded)
+        self.tree.itemSelectionChanged.connect(self._on_selection)
         layout.addWidget(self.tree, 1)
 
         row2 = QHBoxLayout()
@@ -597,7 +716,9 @@ class StylerPanel:
                 n, [(b.GetBeginAtomIdx(), b.GetEndAtomIdx()) for b in mol.GetBonds()]
             )
             symbols = [a.GetSymbol() for a in mol.GetAtoms()]
-            sig = (n, tuple(tuple(f) for f in frags), tuple(symbols))
+            keys, mode = atom_keys(mol)
+            self.state.bind(keys, mode)
+            sig = (n, tuple(tuple(f) for f in frags), tuple(symbols), tuple(keys))
         if sig == self._signature:
             return
         self._signature = sig
@@ -650,7 +771,7 @@ class StylerPanel:
             return
         item.takeChild(0)
         for i in frag:
-            child = QTreeWidgetItem([f"{self.symbols[i]}{i + 1}", ""])
+            child = QTreeWidgetItem([f"{self.symbols[i]}  (id {self.state.key(i)})", ""])
             child.setData(0, Qt.ItemDataRole.UserRole, [i])
             item.addChild(child)
             self.tree.setItemWidget(child, 1, self._make_combo([i]))
@@ -693,6 +814,26 @@ class StylerPanel:
             v3d.set_3d_style(STYLE_NAME)
         _sync_style_menu(self.mw)
         self.context.mark_project_modified()
+
+    def _on_selection(self):
+        """Highlight the atoms of the selected rows in the 3D view."""
+        picked = set()
+        for item in self.tree.selectedItems():
+            picked.update(item.data(0, Qt.ItemDataRole.UserRole) or [])
+        self.selected = sorted(picked)
+        self.draw_selection()
+
+    def draw_selection(self):
+        """(Re)draw the yellow highlight for the current selection."""
+        v3d = getattr(self.mw, "view_3d_manager", None)
+        mol = self._current_mol()
+        if v3d is None or mol is None or getattr(v3d, "plotter", None) is None:
+            return
+        try:
+            draw_highlight(v3d, mol, self.selected)
+            v3d.plotter.render()
+        except Exception:  # pylint: disable=broad-except
+            logger.debug("highlight failed", exc_info=True)
 
     def activate_style(self):
         """Switch the 3D view to this plugin's style (no-op if already active)."""
@@ -748,7 +889,7 @@ def _select_style(context):
 
 def _save():
     active = _is_active(_context)
-    if not _state.styles and not active:
+    if not _state.has_styles() and not active:
         return {}
     return {SAVE_KEY: _state.to_dict(), ACTIVE_KEY: active}
 
@@ -756,7 +897,7 @@ def _save():
 def _load(data):
     data = data if isinstance(data, dict) else {}
     _state.load_dict(data.get(SAVE_KEY))
-    if data.get(ACTIVE_KEY) or _state.styles:
+    if data.get(ACTIVE_KEY) or _state.has_styles():
         _select_style(_context)
     if _panel is not None:
         _panel.refresh()

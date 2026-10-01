@@ -17,6 +17,11 @@ wireframe and a metal centre as CPK in the same view.
 * **Per-molecule styles:** CPK, Ball & Stick, Stick, Wireframe or Hidden.
 * **Per-atom styles:** expand a molecule to style single atoms; the molecule row
   shows `(mixed)` when its atoms differ.
+* **Highlight:** selecting a row in the panel marks its atoms in the 3D view with a
+  yellow translucent shell, like the 3D-edit selection.
+* **Stable atom ids:** atoms are listed by the host's unique, 0-based atom id
+  (`C  (id 0)`), and styles are saved against that id, so they stay on the same
+  atoms when the molecule is re-embedded or reloaded.
 * **Apply to all / Reset:** set every atom at once, or return to the default.
 * **Uses your settings:** radii, resolutions, bond colour, lighting and the
   colour overrides set by other plugins are honoured.

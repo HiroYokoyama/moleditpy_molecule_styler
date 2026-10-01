@@ -89,19 +89,99 @@ def test_state_default_set_and_common():
     assert 2 not in st.styles
 
 
-def test_state_prune_and_roundtrip():
+def test_state_index_mode_roundtrip():
     st = ms.StyleState()
     st.set_atoms([0, 5], "stick")
     st.set_atoms([1], "hidden")
-    data = st.to_dict()
-    assert data == {"0": "stick", "1": "hidden", "5": "stick"}
-    st.prune(3)
-    assert st.styles == {0: "stick", 1: "hidden"}
+    assert st.to_dict() == {"indices": {"0": "stick", "1": "hidden", "5": "stick"}}
     st2 = ms.StyleState()
-    st2.load_dict({"0": "stick", "x": "cpk", "2": "nope", "-1": "cpk", "3": "ball_and_stick"})
-    assert st2.styles == {0: "stick"}
-    st2.load_dict(None)
-    assert st2.styles == {}
+    st2.load_dict(st.to_dict())
+    assert st2.styles == {0: "stick", 1: "hidden", 5: "stick"}
+
+
+def test_state_load_dict_filters_garbage_and_accepts_flat_legacy_map():
+    st = ms.StyleState()
+    st.load_dict({"0": "stick", "x": "cpk", "2": "nope", "-1": "cpk", "3": "ball_and_stick"})
+    assert st.by_index == {0: "stick"}  # v0.2.0 flat index map
+    st.load_dict(None)
+    assert not st.has_styles()
+
+
+def test_state_id_mode_follows_atoms_when_indices_change():
+    st = ms.StyleState()
+    st.bind([10, 11, 12], "id")  # atom ids, 0-based unique
+    st.set_atoms([1], "cpk")
+    assert st.by_id == {11: "cpk"}
+    st.bind([12, 11, 10], "id")  # same atoms, re-embedded in another order
+    assert st.style_of(1) == "cpk"
+    assert st.style_of(0) == ms.DEFAULT_STYLE
+    assert st.common_style([1]) == "cpk"
+
+
+def test_state_id_roundtrip_and_legacy_index_migration():
+    st = ms.StyleState()
+    st.bind([5, 6, 7], "id")
+    st.set_atoms([0, 2], "stick")
+    assert st.to_dict() == {"atom_ids": {"5": "stick", "7": "stick"}}
+    st2 = ms.StyleState()
+    st2.load_dict(st.to_dict())
+    st2.bind([7, 6, 5], "id")
+    assert st2.style_of(0) == "stick" and st2.style_of(2) == "stick"
+    assert st2.style_of(1) == ms.DEFAULT_STYLE
+    old = ms.StyleState()  # v0.2.0 project: styles keyed by RDKit index
+    old.load_dict({"1": "wireframe"})
+    old.bind([20, 21, 22], "id")
+    assert old.by_id == {21: "wireframe"} and old.by_index == {}
+
+
+def test_state_index_and_id_dicts_do_not_mix():
+    st = ms.StyleState()
+    st.bind([3, 4], "id")
+    st.set_atoms([0], "cpk")
+    st.bind([0, 1], "index")  # a molecule without ids
+    assert st.style_of(0) == ms.DEFAULT_STYLE and st.by_id == {3: "cpk"}
+
+
+class IdAtom:
+    def __init__(self, sym, uid=None):
+        self.sym, self.uid = sym, uid
+
+    def GetSymbol(self):
+        return self.sym
+
+    def HasProp(self, name):
+        return name == ms.ATOM_ID_PROP and self.uid is not None
+
+    def GetIntProp(self, name):
+        return self.uid
+
+
+class IdMol:
+    def __init__(self, atoms, bonds=()):
+        self.atoms, self.bonds = atoms, list(bonds)
+
+    def GetNumAtoms(self):
+        return len(self.atoms)
+
+    def GetAtoms(self):
+        return list(self.atoms)
+
+    def GetAtomWithIdx(self, i):
+        return self.atoms[i]
+
+    def GetBonds(self):
+        return [SimpleNamespace(GetBeginAtomIdx=lambda a=a: a, GetEndAtomIdx=lambda b=b: b)
+                for a, b in self.bonds]
+
+
+def test_atom_keys_uses_unique_ids_when_all_present():
+    mol = IdMol([IdAtom("C", 0), IdAtom("O", 4), IdAtom("H", 2)])
+    assert ms.atom_keys(mol) == ([0, 4, 2], "id")
+
+
+def test_atom_keys_falls_back_to_index():
+    assert ms.atom_keys(IdMol([IdAtom("C", 0), IdAtom("O")])) == ([0, 1], "index")
+    assert ms.atom_keys(IdMol([IdAtom("C", 3), IdAtom("O", 3)])) == ([0, 1], "index")
 
 
 # --- scene building ----------------------------------------------------------
@@ -294,6 +374,7 @@ def test_rebuild_if_changed_only_when_signature_differs():
     class Atom:
         def __init__(self, s): self.s = s
         def GetSymbol(self): return self.s
+        def HasProp(self, name): return False
 
     class Bond:
         def __init__(self, a, b): self.a, self.b = a, b
@@ -307,7 +388,7 @@ def test_rebuild_if_changed_only_when_signature_differs():
         def GetBonds(self): return [Bond(a, b) for a, b in self.bonds]
 
     st = ms.StyleState()
-    st.set_atoms([5], "cpk")
+    st.set_atoms([5], "cpk")  # index 5 only exists in the 6-atom molecule below
     p = SimpleNamespace(state=st, _signature=None, fragments=[], symbols=[], _populate=MagicMock())
     mol = Mol(["C", "O", "H"], [(0, 1)])
     ms.StylerPanel._rebuild_if_changed(p, mol)
@@ -350,11 +431,16 @@ def test_save_load_reset_roundtrip(monkeypatch):
     assert ms._save() == {}  # nothing styled and style not active
     ms._state.set_atoms([0, 2], "stick")
     saved = ms._save()
-    assert saved == {ms.SAVE_KEY: {"0": "stick", "2": "stick"}, ms.ACTIVE_KEY: False}
+    assert saved == {
+        ms.SAVE_KEY: {"indices": {"0": "stick", "2": "stick"}},
+        ms.ACTIVE_KEY: False,
+    }
     ms._reset_document()
     assert ms._state.styles == {}
     ms._load(saved)
     assert ms._state.styles == {0: "stick", 2: "stick"}
+    ms._load({ms.SAVE_KEY: {"0": "stick"}})  # v0.2.0 project: flat index map
+    assert ms._state.styles == {0: "stick"}
     ms._load(None)
     assert ms._state.styles == {}
 
@@ -513,3 +599,64 @@ def test_activate_style_and_redraw_tick_the_menu():
     p = SimpleNamespace(mw=mw, context=ctx, _current_mol=lambda: object())
     ms.StylerPanel.redraw(p)
     assert actions[1].checked
+
+
+def test_save_uses_unique_ids_not_indices(monkeypatch):
+    ctx, _, _ = _ctx("ball_and_stick")
+    monkeypatch.setattr(ms, "_context", ctx)
+    ms._state.clear()
+    ms._state.bind([7, 8, 9], "id")
+    ms._state.set_atoms([0], "cpk")
+    assert ms._save()[ms.SAVE_KEY] == {"atom_ids": {"7": "cpk"}}
+    ms._state.clear()
+    ms._state.bind([], "index")
+
+
+# --- row selection -> yellow highlight ---------------------------------------
+
+class FakeItem:
+    def __init__(self, indices):
+        self.indices = indices
+
+    def data(self, column, role):
+        return self.indices
+
+
+def test_selection_collects_atoms_of_selected_rows_and_redraws():
+    p = SimpleNamespace(
+        tree=SimpleNamespace(selectedItems=lambda: [FakeItem([3, 1]), FakeItem([1, 2]), FakeItem(None)]),
+        selected=[],
+        draw_selection=MagicMock(),
+    )
+    ms.StylerPanel._on_selection(p)
+    assert p.selected == [1, 2, 3]
+    p.draw_selection.assert_called_once()
+
+
+def test_draw_selection_calls_highlight_and_renders(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ms, "draw_highlight", lambda v3d, mol, idx: calls.append(list(idx)))
+    plotter = MagicMock()
+    mw = SimpleNamespace(view_3d_manager=SimpleNamespace(plotter=plotter))
+    p = SimpleNamespace(mw=mw, selected=[0, 2], _current_mol=lambda: object())
+    ms.StylerPanel.draw_selection(p)
+    assert calls == [[0, 2]]
+    plotter.render.assert_called_once()
+
+
+def test_draw_selection_is_noop_without_molecule_or_plotter(monkeypatch):
+    monkeypatch.setattr(ms, "draw_highlight", lambda *a: pytest.fail("must not draw"))
+    mw = SimpleNamespace(view_3d_manager=SimpleNamespace(plotter=MagicMock()))
+    ms.StylerPanel.draw_selection(SimpleNamespace(mw=mw, selected=[0], _current_mol=lambda: None))
+    mw2 = SimpleNamespace(view_3d_manager=SimpleNamespace(plotter=None))
+    ms.StylerPanel.draw_selection(SimpleNamespace(mw=mw2, selected=[0], _current_mol=lambda: object()))
+    ms.StylerPanel.draw_selection(SimpleNamespace(mw=SimpleNamespace(), selected=[0], _current_mol=lambda: object()))
+
+
+def test_draw_selection_swallows_render_errors(monkeypatch):
+    def boom(*a):
+        raise RuntimeError("vtk gone")
+
+    monkeypatch.setattr(ms, "draw_highlight", boom)
+    mw = SimpleNamespace(view_3d_manager=SimpleNamespace(plotter=MagicMock()))
+    ms.StylerPanel.draw_selection(SimpleNamespace(mw=mw, selected=[0], _current_mol=lambda: object()))
