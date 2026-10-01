@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.3.1"
+PLUGIN_VERSION = "0.3.2"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -56,6 +56,7 @@ STYLE_NAME = "Molecule Styler"
 SAVE_KEY = "styles"
 ACTIVE_KEY = "active"
 DEFAULT_STYLE = "ball_and_stick"
+NEW_MOLECULE_OVERLAP = 0.5
 MIXED_LABEL = "(mixed)"
 POLL_MS = 600
 WIDTH_SCALE = 1.2  # panel is 20% wider than Qt's default size hint
@@ -162,11 +163,29 @@ class StyleState:
         self.by_index = {}
         self.mode = "index"
         self.keys = []
+        self._fingerprint = None  # (mode, {(key, symbol)}) of the bound molecule
 
-    def bind(self, keys, mode):
-        """Attach the current molecule's key list and key mode."""
+    def bind(self, keys, mode, symbols=None):
+        """Attach the current molecule's key list and key mode.
+
+        With `symbols`, also detect a *different* molecule arriving: unique ids
+        restart at 0 for every new molecule, so without this a new molecule
+        would inherit the old one's styles. If fewer than half of the atoms
+        (key, element) still match the previous molecule (in either direction,
+        so a transient subset or a grown molecule still counts as the same one),
+        the styles are cleared and the new molecule starts at DEFAULT_STYLE.
+        """
         self.keys = list(keys)
         self.mode = mode
+        if symbols is None:
+            return
+        fingerprint = set(zip(self.keys, symbols))
+        prev = self._fingerprint
+        if prev and fingerprint and prev[0] == mode:
+            common = len(fingerprint & prev[1])
+            if max(common / len(prev[1]), common / len(fingerprint)) < NEW_MOLECULE_OVERLAP:
+                self.clear()
+        self._fingerprint = (mode, fingerprint)
 
     def _active(self):
         return self.by_id if self.mode == "id" else self.by_index
@@ -237,6 +256,7 @@ class StyleState:
     def load_dict(self, data):
         """Restore from `to_dict` output; anything else is ignored."""
         self.clear()
+        self._fingerprint = None  # the next molecule is the project's own
         if not isinstance(data, dict):
             return
         self.by_id = self._parse(data.get("atom_ids"))
@@ -476,7 +496,7 @@ def _render_body(mw, v3d, mol):
     ]
 
     keys, mode = atom_keys(mol)
-    _state.bind(keys, mode)
+    _state.bind(keys, mode, symbols)
     cfg = _make_cfg(settings, display_radii, pt)
     spheres, segments = build_scene(
         symbols, positions, bonds, _state.style_of, colors, cfg, bond_colors
@@ -665,6 +685,10 @@ class StylerPanel:
         refresh.clicked.connect(self.refresh)
         reset = QPushButton("Reset styles")
         reset.clicked.connect(self._reset)
+        unselect = QPushButton("Unselect")
+        unselect.setToolTip("Clear the selection and remove the yellow highlight")
+        unselect.clicked.connect(self._unselect)
+        row2.addWidget(unselect)
         row2.addWidget(refresh)
         row2.addWidget(reset)
         layout.addLayout(row2)
@@ -707,7 +731,7 @@ class StylerPanel:
             )
             symbols = [a.GetSymbol() for a in mol.GetAtoms()]
             keys, mode = atom_keys(mol)
-            self.state.bind(keys, mode)
+            self.state.bind(keys, mode, symbols)
             sig = (n, tuple(tuple(f) for f in frags), tuple(symbols), tuple(keys))
         if sig == self._signature:
             return
@@ -811,6 +835,12 @@ class StylerPanel:
         for item in self.tree.selectedItems():
             picked.update(item.data(0, Qt.ItemDataRole.UserRole) or [])
         self.selected = sorted(picked)
+        self.draw_selection()
+
+    def _unselect(self):
+        """Clear the row selection and the 3D highlight."""
+        self.tree.clearSelection()
+        self.selected = []
         self.draw_selection()
 
     def draw_selection(self):

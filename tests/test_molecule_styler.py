@@ -403,7 +403,7 @@ def test_rebuild_if_changed_only_when_signature_differs():
     ms.StylerPanel._rebuild_if_changed(p, None)
     assert p._populate.call_count == 2 and p.fragments == []
     assert st.styles == {5: "cpk"}
-    ms.StylerPanel._rebuild_if_changed(p, Mol(["C"] * 6, []))  # molecule comes back
+    ms.StylerPanel._rebuild_if_changed(p, Mol(["C", "O", "H", "H", "H", "H"], []))  # molecule comes back
     assert st.style_of(5) == "cpk"
 
 
@@ -663,3 +663,70 @@ def test_draw_selection_swallows_render_errors(monkeypatch):
     monkeypatch.setattr(ms, "draw_highlight", boom)
     mw = SimpleNamespace(view_3d_manager=SimpleNamespace(plotter=MagicMock()))
     ms.StylerPanel.draw_selection(SimpleNamespace(mw=mw, selected=[0], _current_mol=lambda: object()))
+
+
+# --- a new molecule starts at the default style --------------------------------
+
+def test_new_molecule_with_overlapping_ids_does_not_inherit_styles():
+    st = ms.StyleState()
+    st.bind([0, 1, 2], "id", ["C", "C", "O"])
+    st.set_atoms([0, 1], "cpk")
+    st.bind([0, 1, 2], "id", ["N", "N", "H"])  # a different molecule, ids restart at 0
+    assert not st.has_styles()
+    assert st.style_of(0) == ms.DEFAULT_STYLE == "ball_and_stick"
+
+
+def test_edited_molecule_keeps_styles_when_atoms_are_added_or_transiently_missing():
+    st = ms.StyleState()
+    st.bind([0, 1, 2, 3], "id", ["C", "C", "O", "H"])
+    st.set_atoms([0], "stick")
+    st.bind([0, 1, 2, 3, 4], "id", ["C", "C", "O", "H", "H"])  # atom added
+    assert st.style_of(0) == "stick"
+    st.bind([0, 1, 2], "id", ["C", "C", "O"])  # transient subset during a redraw
+    assert st.style_of(0) == "stick"
+    st.bind([0, 1, 2, 3], "id", ["C", "C", "O", "H"])
+    assert st.style_of(0) == "stick"
+
+
+def test_new_molecule_detection_in_index_mode_and_across_modes():
+    st = ms.StyleState()
+    st.bind([0, 1], "index", ["C", "O"])
+    st.set_atoms([0], "cpk")
+    st.bind([0, 1], "index", ["Cl", "Br"])
+    assert not st.has_styles()
+    st.set_atoms([0], "cpk")
+    st.bind([5, 6], "id", ["Cl", "Br"])  # mode change is not compared
+    assert st.by_index == {0: "cpk"}
+
+
+def test_project_load_adopts_its_molecule_instead_of_clearing_styles():
+    st = ms.StyleState()
+    st.bind([0, 1], "id", ["C", "C"])  # molecule that was open before the load
+    st.load_dict({"atom_ids": {"3": "stick"}})
+    st.bind([3, 4], "id", ["O", "H"])  # the project's own molecule
+    assert st.by_id == {3: "stick"}
+
+
+def test_bind_without_symbols_never_clears():
+    st = ms.StyleState()
+    st.bind([0, 1], "id", ["C", "C"])
+    st.set_atoms([0], "cpk")
+    st.bind([0, 1], "id")
+    assert st.style_of(0) == "cpk"
+
+
+def test_unselect_clears_selection_and_highlight():
+    tree = MagicMock()
+    p = SimpleNamespace(tree=tree, selected=[1, 2], draw_selection=MagicMock())
+    ms.StylerPanel._unselect(p)
+    tree.clearSelection.assert_called_once()
+    assert p.selected == []
+    p.draw_selection.assert_called_once()
+
+
+def test_comparison_uses_unique_ids_not_indices():
+    st = ms.StyleState()
+    st.bind([10, 11, 12], "id", ["C", "C", "O"])
+    st.set_atoms([0], "cpk")  # atom with unique id 10
+    st.bind([12, 11, 10], "id", ["O", "C", "C"])  # same atoms, shuffled indices
+    assert st.style_of(2) == "cpk"
