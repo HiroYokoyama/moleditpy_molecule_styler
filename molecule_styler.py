@@ -46,7 +46,7 @@ PLUGIN_DESCRIPTION = (
     "per-atom 3D display styles (CPK, Ball & Stick, Stick, Wireframe, Hidden)."
 )
 PLUGIN_CATEGORY = "Visualization"
-PLUGIN_TAGS = ["Visualization", "Style"]
+PLUGIN_TAGS = ["Visualization"]
 PLUGIN_DEPENDENCIES = ["pyvista", "PyQt6", "numpy"]
 PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=4.0.0, <5.0.0"
 PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.9, <3.15"
