@@ -719,6 +719,31 @@ def _sync_style_menu(mw):
             return
 
 
+def _make_clearing_widgets(on_empty_click):
+    """Tree and body widgets that report clicks that land on no row.
+
+    Built on demand so importing the module never subclasses a Qt class (the
+    headless tests stub Qt out).
+    """
+
+    class ClearingTree(QTreeWidget):
+        """Clicking the empty area below the rows clears the selection."""
+
+        def mousePressEvent(self, event):  # pylint: disable=invalid-name
+            if self.itemAt(event.position().toPoint()) is None:
+                on_empty_click()
+            super().mousePressEvent(event)
+
+    class ClearingBody(QWidget):
+        """Clicking the panel background (labels, gaps) clears the selection."""
+
+        def mousePressEvent(self, event):  # pylint: disable=invalid-name
+            on_empty_click()
+            super().mousePressEvent(event)
+
+    return ClearingTree(), ClearingBody()
+
+
 class StylerPanel:
     """Right-hand dock listing molecules and atoms with a style combo each."""
 
@@ -735,7 +760,7 @@ class StylerPanel:
 
         self.dock = QDockWidget("Molecule Styler", self.mw)
         self.dock.setObjectName("MoleculeStylerDock")
-        body = QWidget()
+        self.tree, body = _make_clearing_widgets(self._unselect)
         layout = QVBoxLayout(body)
 
         self.info = QLabel("")
@@ -752,7 +777,6 @@ class StylerPanel:
         row.addWidget(apply_btn)
         layout.addLayout(row)
 
-        self.tree = QTreeWidget()
         self.tree.setColumnCount(3)
         self.tree.setHeaderLabels(["Molecule / Atom", "Style", "Size %"])
         self.column_widths = list(COLUMN_WIDTHS)

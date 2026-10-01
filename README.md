@@ -24,7 +24,8 @@ wireframe and a metal centre as CPK in the same view.
   project that uses it) opens the panel if it is closed, and never opens a second one.
 * **Unselect** clears the selection and the highlight.
 * **Highlight:** selecting a row in the panel marks its atoms in the 3D view with a
-  yellow translucent shell, like the 3D-edit selection.
+  yellow translucent shell, like the 3D-edit selection. Clicking an empty part of the panel (below the rows or on the
+  background) clears the selection, and so does the **Unselect** button.
 * **Stable atom ids:** atoms are listed by the host's unique, 0-based atom id
   (`C  (id 0)`), and styles are saved against that id, so they stay on the same
   atoms when the molecule is re-embedded or reloaded.
