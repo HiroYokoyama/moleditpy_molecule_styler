@@ -1,14 +1,11 @@
 name: CI
 
-# Disabled by default so a freshly-copied template does not start failing before
-# you have written anything: it only runs when you dispatch it by hand. Turn it
-# on permanently by uncommenting the two triggers below.
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [ main ]
-  # pull_request:
-  #   branches: [ main ]
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 permissions:
   contents: read
