@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.1.1"
+PLUGIN_VERSION = "0.1.2"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -52,7 +52,7 @@ PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=4.0.0, <5.0.0"
 PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.9, <3.15"
 PLUGIN_SUPPORTED_OS = ["Windows", "macOS", "Linux", "WSL"]
 
-STYLE_NAME = "Per-Molecule Style"
+STYLE_NAME = "Molecule Styler"
 SAVE_KEY = "styles"
 DEFAULT_STYLE = "ball_and_stick"
 MIXED_LABEL = "(mixed)"

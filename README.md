@@ -26,7 +26,7 @@ wireframe and a metal centre as CPK in the same view.
 1. Load molecules in the 3D viewer.
 2. Open **View > Molecule Styler Panel**.
 3. Pick a style in the combo box of a molecule or atom. The viewer switches to the
-   **Per-Molecule Style** automatically; select another 3D style to leave it
+   **Molecule Styler** automatically; select another 3D style to leave it
    (your choices are kept).
 
 Mixed styles: a bond is hidden if either atom is hidden, and between two CPK atoms
