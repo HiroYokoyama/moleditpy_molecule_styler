@@ -48,7 +48,7 @@ it is hidden inside the spheres; otherwise it takes the thinner of the two style
 bond radii.
 
 ## Requirements
-`PyQt6`, `numpy`, `pyvista` (all provided by the MoleditPy environment).
+`PySide6`, `numpy`, `pyvista` (all provided by the MoleditPy environment).
 
 ## Development and Testing
 ```bash

@@ -1,4 +1,4 @@
-"""Headless tests for molecule_styler.py (PyQt6 stubbed, no rdkit/pyvista)."""
+"""Headless tests for molecule_styler.py (PySide6 stubbed, no rdkit/pyvista)."""
 import importlib.util
 import sys
 import types
@@ -10,20 +10,20 @@ import pytest
 
 
 def _install_stubs():
-    if "PyQt6" in sys.modules and hasattr(sys.modules["PyQt6"], "__file__"):
+    if "PySide6" in sys.modules and hasattr(sys.modules["PySide6"], "__file__"):
         return
-    pyqt6 = types.ModuleType("PyQt6")
-    qt_core = types.ModuleType("PyQt6.QtCore")
+    pyside6 = types.ModuleType("PySide6")
+    qt_core = types.ModuleType("PySide6.QtCore")
     qt_core.Qt = MagicMock()
     qt_core.QTimer = MagicMock()
-    qt_widgets = types.ModuleType("PyQt6.QtWidgets")
+    qt_widgets = types.ModuleType("PySide6.QtWidgets")
     for name in [
         "QComboBox", "QDockWidget", "QHBoxLayout", "QLabel", "QPushButton", "QSpinBox",
         "QTreeWidget", "QTreeWidgetItem", "QVBoxLayout", "QWidget",
     ]:
         setattr(qt_widgets, name, MagicMock())
     for name, mod in [
-        ("PyQt6", pyqt6), ("PyQt6.QtCore", qt_core), ("PyQt6.QtWidgets", qt_widgets),
+        ("PySide6", pyside6), ("PySide6.QtCore", qt_core), ("PySide6.QtWidgets", qt_widgets),
     ]:
         sys.modules.setdefault(name, mod)
 
