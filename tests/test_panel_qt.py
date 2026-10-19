@@ -1,4 +1,4 @@
-"""Panel behaviour that needs a real Qt (skipped when PyQt6 is absent or stubbed)."""
+"""Panel behaviour that needs a real Qt (skipped when PySide6 is absent or stubbed)."""
 import importlib.util
 import sys
 from pathlib import Path
@@ -6,13 +6,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-pytest.importorskip("PyQt6.QtTest")
-if not hasattr(sys.modules.get("PyQt6"), "__file__"):  # a stub from another test file
-    pytest.skip("PyQt6 is stubbed in this process", allow_module_level=True)
+pytest.importorskip("PySide6.QtTest")
+if not hasattr(sys.modules.get("PySide6"), "__file__"):  # a stub from another test file
+    pytest.skip("PySide6 is stubbed in this process", allow_module_level=True)
 
-from PyQt6.QtCore import QPoint, Qt  # noqa: E402
-from PyQt6.QtTest import QTest  # noqa: E402
-from PyQt6.QtWidgets import QTreeWidgetItem  # noqa: E402
+from PySide6.QtCore import QPoint, Qt  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtWidgets import QTreeWidgetItem  # noqa: E402
 
 _PATH = Path(__file__).resolve().parents[1] / "molecule_styler.py"
 _spec = importlib.util.spec_from_file_location("molecule_styler_qt", _PATH)
@@ -45,7 +45,7 @@ def test_click_below_the_rows_calls_back_but_a_row_click_does_not(qapp):
 
 
 def test_empty_click_unselects_through_the_panel(qapp):
-    from PyQt6.QtWidgets import QMainWindow
+    from PySide6.QtWidgets import QMainWindow
 
     mw = QMainWindow()
     mw.view_3d_manager = MagicMock()
@@ -73,7 +73,7 @@ def _load_copy(name):
 
 
 def _window_and_context():
-    from PyQt6.QtWidgets import QMainWindow
+    from PySide6.QtWidgets import QMainWindow
 
     mw = QMainWindow()
     mw.view_3d_manager = MagicMock()
@@ -86,13 +86,13 @@ def _window_and_context():
 
 def _flush_deletes():
     """Run the deleteLater() calls the plugin queued (the app's event loop does this)."""
-    from PyQt6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtCore import QCoreApplication, QEvent
 
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
 
 
 def _docks(mw):
-    from PyQt6.QtWidgets import QDockWidget
+    from PySide6.QtWidgets import QDockWidget
 
     return mw.findChildren(QDockWidget, ms.DOCK_OBJECT_NAME)
 

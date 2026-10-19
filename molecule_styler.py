@@ -7,7 +7,7 @@ each individual atom inside it.
 
 Source code, README, and full license (GNU GPL):
     https://github.com/HiroYokoyama/moleditpy_molecule_styler
-Copyright (c) HiroYokoyama. Licensed under the GNU General Public License;
+Copyright (c) HiroYokoyama. Licensed under the GNU Lesser General Public License;
 see the LICENSE file in the repository above for the full terms.
 """
 
@@ -17,8 +17,8 @@ import logging
 import math
 import sys
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import (
     QComboBox,
     QDockWidget,
     QHBoxLayout,
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.5.1"
+PLUGIN_VERSION = "0.6.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -48,9 +48,9 @@ PLUGIN_DESCRIPTION = (
 )
 PLUGIN_CATEGORY = "Visualization"
 PLUGIN_TAGS = ["Visualization"]
-PLUGIN_DEPENDENCIES = ["pyvista", "PyQt6", "numpy"]
-PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=4.0.0, <5.0.0"
-PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.9, <3.15"
+PLUGIN_DEPENDENCIES = ["pyvista", "PySide6-Essentials", "numpy"]
+PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0, <6.0.0"
+PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.10, <3.15"
 PLUGIN_SUPPORTED_OS = ["Windows", "macOS", "Linux", "WSL"]
 
 STYLE_NAME = "Molecule Styler"

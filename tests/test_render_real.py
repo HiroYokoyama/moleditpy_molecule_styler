@@ -3,7 +3,7 @@
 A MagicMock host hides wrong attribute paths (v0.1.0 read edit_3d_manager from
 the view manager, where the real host does not have it), so every attribute the
 renderer touches here must be declared explicitly. Skipped when the heavy
-dependencies are absent (CI installs pytest only plus numpy/PyQt6).
+dependencies are absent (CI installs pytest only plus numpy/PySide6).
 """
 import importlib.util
 import sys
