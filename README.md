@@ -3,7 +3,7 @@
 [![CI](https://github.com/HiroYokoyama/moleditpy_molecule_styler/actions/workflows/test.yml/badge.svg)](https://github.com/HiroYokoyama/moleditpy_molecule_styler/actions/workflows/test.yml)
 [![GitHub tag](https://img.shields.io/github/v/tag/HiroYokoyama/moleditpy_molecule_styler?label=version)](https://github.com/HiroYokoyama/moleditpy_molecule_styler/tags)
 [![GitHub Downloads](https://img.shields.io/github/downloads/HiroYokoyama/moleditpy_molecule_styler/total)](https://github.com/HiroYokoyama/moleditpy_molecule_styler/releases)
-[![License: GPL-3.0](https://img.shields.io/github/license/HiroYokoyama/moleditpy_molecule_styler)](LICENSE)
+[![License: LGPL-3.0-or-later](https://img.shields.io/github/license/HiroYokoyama/moleditpy_molecule_styler)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 [![MoleditPy](https://img.shields.io/badge/MoleditPy-5.x-3577F7)](https://github.com/HiroYokoyama/python_molecular_editor)
 
@@ -56,3 +56,7 @@ python -m pytest tests/ -v
 ```
 The suite is headless (Qt stubbed) and also runs the static API check against the
 main app when it is checked out next to this repository.
+
+## Licensing scope
+
+First-party code in this migration is LGPL-3.0-or-later. See [LICENSE](LICENSE), [COPYING](COPYING) and [dependency/provenance terms](LICENSING.md). Third-party components and historical releases retain their own terms.

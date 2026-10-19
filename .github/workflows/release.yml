@@ -59,7 +59,7 @@ jobs:
           gh release create "v$VERSION" \
             --title "Molecule Styler $VERSION" \
             --generate-notes \
-            molecule_styler.py
+            molecule_styler.py LICENSE COPYING LICENSING.md
 
       # No-op unless a REGISTRY_PAT secret exists (only the registry maintainer
       # can issue one); third-party repos use the registration issue instead.
