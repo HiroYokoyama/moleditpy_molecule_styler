@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Molecule Styler"
-PLUGIN_VERSION = "0.6.0"
+PLUGIN_VERSION = "0.6.1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Right-hand panel listing each disconnected molecule, with per-molecule and "
@@ -50,7 +50,7 @@ PLUGIN_CATEGORY = "Visualization"
 PLUGIN_TAGS = ["Visualization"]
 PLUGIN_DEPENDENCIES = ["pyvista", "PySide6-Essentials", "numpy"]
 PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0, <6.0.0"
-PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.10, <3.15"
+PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.9, <3.15"
 PLUGIN_SUPPORTED_OS = ["Windows", "macOS", "Linux", "WSL"]
 
 STYLE_NAME = "Molecule Styler"
