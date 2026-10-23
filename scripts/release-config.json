@@ -1,0 +1,10 @@
+{
+  "source": "molecule_styler.py",
+  "title": "Molecule Styler",
+  "assets": [
+    "molecule_styler.py",
+    "LICENSE",
+    "COPYING",
+    "LICENSING.md"
+  ]
+}
